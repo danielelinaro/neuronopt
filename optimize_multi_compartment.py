@@ -7,7 +7,7 @@ import shutil
 import pickle
 import argparse as arg
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import bluepyopt
 import dlopt
 
@@ -51,7 +51,9 @@ def main():
 
     cell_name = args.cell_name
     if cell_name is None:
-        cell_name = os.path.basename(swc_filename).split('-.')[0].replace('-','_')
+        cell_name = os.path.basename(swc_filename).split('.')[0].replace('-','_')
+        if cell_name[0] in '1234567890':
+            cell_name = 'c' + cell_name
         
     if args.suffix is None:
         suffix = ''
@@ -109,17 +111,17 @@ def main():
         pickle.dump(history,fid)
     
     #### let's plot the results
-    for resp in responses:
-        for k,v in resp.iteritems():
-            if 'soma' in k:
-                plt.plot(v['time'],v['voltage'],linewidth=1)
-    for k,v in responses[0].iteritems():
-        if 'soma' in k:
-            plt.plot(v['time'],v['voltage'],'k',linewidth=2,label='Best individual')
-    plt.xlabel('Time (ms)')
-    plt.ylabel(r'$V_m$ (mV)')
-    plt.legend(loc='best')
-    plt.show()
+    #for resp in responses:
+    #    for k,v in resp.iteritems():
+    #        if 'soma' in k:
+    #            plt.plot(v['time'],v['voltage'],linewidth=1)
+    #for k,v in responses[0].iteritems():
+    #    if 'soma' in k:
+    #        plt.plot(v['time'],v['voltage'],'k',linewidth=2,label='Best individual')
+    #plt.xlabel('Time (ms)')
+    #plt.ylabel(r'$V_m$ (mV)')
+    #plt.legend(loc='best')
+    #plt.show()
     
     #params = {name: [] for name in evaluator.param_names}
     #for individual in final_pop:

@@ -1,4 +1,16 @@
-2017*_*
+*~
+*.swc
+*.pyc
+*.pyo
+*.h5
+*.aux
+*.log
+*.pdf
+*.old
+.ipynb_checkpoints
+*.nb
+.DS_Store
+x86_64
 *.mod
 !mechanisms/*.mod
 !mechanisms_hbp/*.mod
