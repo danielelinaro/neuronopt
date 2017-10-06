@@ -72,9 +72,9 @@ def main():
             sys.exit(1)
 
     now = time.gmtime(time.time())
-    output_folder = '%d%02d%02d%02d%02d%0d_%s' % (now.tm_year,now.tm_mon,now.tm_mday,
-                                                  now.tm_hour,now.tm_min,now.tm_sec,
-                                                  cell_name)
+    output_folder = '%d%02d%02d%02d%02d%02d_%s' % (now.tm_year,now.tm_mon,now.tm_mday,
+                                                   now.tm_hour,now.tm_min,now.tm_sec,
+                                                   cell_name)
     os.mkdir(output_folder, 0755)
 
     for f in filenames.values():
@@ -88,7 +88,10 @@ def main():
     evaluator = dlopt.evaluator.create(cell_name, filenames, config_dir=args.config_dir)
     print(evaluator.cell_model)
 
-    optimisation = bluepyopt.optimisations.DEAPOptimisation(evaluator=evaluator,offspring_size=args.population_size)
+    optimisation = bluepyopt.optimisations.DEAPOptimisation(evaluator=evaluator,
+                                                            offspring_size=args.population_size,
+                                                            use_scoop=True)
+
     final_pop,hall_of_fame,logbook,history = optimisation.run(max_ngen=args.num_generation)
  
     best_ind = hall_of_fame[0]
@@ -100,7 +103,7 @@ def main():
 
     #### let's simulate the responses of the final population
     responses = get_responses(evaluator, hall_of_fame, output_folder+'/hall_of_fame_responses.pkl')
-    get_responses(evaluator, final_pop, output_folder+'/final_population_responses.pkl')
+    #get_responses(evaluator, final_pop, output_folder+'/final_population_responses.pkl')
     save_individuals(hall_of_fame, output_folder+'/hall_of_fame.pkl')
     save_individuals(final_pop, output_folder+'/final_population.pkl')
     with open(output_folder+'/evaluator.pkl','w') as fid:
