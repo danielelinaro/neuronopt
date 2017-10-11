@@ -17,9 +17,18 @@ encoder.FLOAT_REPR = lambda o: format(o, '.4g')
 
 progname = os.path.basename(sys.argv[0])
 
-feature_names = ['AP_height','AHP_slow_time','ISI_CV','doublet_ISI',
-                 'adaptation_index2','mean_frequency','AHP_depth_abs_slow',
-                 'AP_width','time_to_first_spike','AHP_depth_abs']
+#feature_names = ['AP_height','AHP_slow_time','ISI_CV','doublet_ISI',
+#                 'adaptation_index2','mean_frequency','AHP_depth_abs_slow',
+#                 'AP_width','time_to_first_spike','AHP_depth_abs']
+#feature_names = ['AP_height','AP_begin_voltage','spike_half_width',
+#                 'time_to_first_spike','adaptation_index2',
+#                 'ISI_values','ISI_CV','doublet_ISI',
+#                 'AHP_depth_abs','AHP_slow_time','AHP_depth_abs_slow']
+feature_names = ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                 'time_to_first_spike','adaptation_index2',
+                 'ISI_values','ISI_CV','doublet_ISI',
+                 'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
+                 'Spikecount','fast_AHP']
 
 ############################################################
 ###                        WRITE                         ###
@@ -65,7 +74,6 @@ def write_features():
         amplitudes.append(data['current_amplitudes'])
 
     nsteps = 3
-    X = [[] for i in range(nsteps)]
     desired_amps = np.zeros((len(amplitudes),nsteps))
     for i,(amplitude,feature) in enumerate(zip(amplitudes,features)):
         amps = np.unique(amplitude)
@@ -79,35 +87,56 @@ def write_features():
         for j in range(nsteps):
             if not desired_amps[i,j] in amps:
                 desired_amps[i,j] = amps[np.argmin(np.abs(amps - desired_amps[i,j]))]
-        for j,amp in enumerate(desired_amps[i,:]):
-            idx, = np.where(amplitude == amp)
-            X[j].append([[feature[jdx][name] for jdx in idx] for name in feature_names])
-
-    flatten = lambda l: [item for sublist in l for item in sublist]
-    
-    nfeatures = len(feature_names)
-    Xm = np.nan + np.zeros((len(X),nfeatures))
-    Xs = np.nan + np.zeros((len(X),nfeatures))
-    for i,x in enumerate(X):
-        for j in range(nfeatures):
-            try:
-                y = flatten([flatten(y[j]) for y in x])
-                Xm[i,j] = np.mean(y)
-                Xs[i,j] = np.std(y)
-            except:
-                pass
 
     protocols_dict = {}
-    features_dict = {}
     for i in range(nsteps):
         stepnum = 'Step%d'%(i+1)
         protocols_dict[stepnum] = {'stimuli': [{
             'delay': 500, 'amp': np.mean(desired_amps[:,i]),
             'duration': 2000, 'totduration': 3000}]}
-        features_dict[stepnum] = {'soma': {}}
-        for j in range(nfeatures):
-            if not np.isnan(Xm[i,j]):
-                features_dict[stepnum]['soma'][feature_names[j]] = [Xm[i,j],Xs[i,j]]
+
+    flatten = lambda l: [item for sublist in l for item in sublist]
+
+    all_features = [{name: [] for name in feature_names} for i in range(nsteps)]
+    features_dict = {'Step%d'%i: {'soma': {}} for i in range(1,4)}
+    for name in feature_names:
+        for i in range(len(args.files)):
+            for j in range(len(amplitudes[i])):
+                idx, = np.where(amplitudes[i][j] == desired_amps[i])
+                if len(idx) == 1:
+                    try:
+                        all_features[idx[0]][name].append(features[i][j][name].tolist())
+                    except:
+                        pass
+        for i in range(nsteps):
+            stepnum = 'Step%d' % (i+1)
+            all_features[i][name] = flatten(all_features[i][name])
+            if len(all_features[i][name]) > 0:
+                features_dict[stepnum]['soma'][name] = [np.mean(all_features[i][name]),
+                                                        np.std(all_features[i][name])]
+
+    num_features = len(feature_names)
+    to_remove = []
+    for stepnum,step in features_dict.iteritems():
+        if len(step['soma']) < num_features:
+            print('Not all features were extracted for protocol "%s".' % stepnum)
+            print('The extracted features are the following:\n')
+            for i,feat in enumerate(step['soma']):
+                print('[%02d] %s' % (i+1,feat))
+            print('')
+            while True:
+                resp = raw_input('Remove this protocol? [yes/no] ')
+                if resp.lower() == 'yes':
+                    to_remove.append(stepnum)
+                    break
+                elif resp.lower() == 'no':
+                    break
+                else:
+                    print('Please enter yes or no.')
+
+    for stepnum in to_remove:
+        features_dict.pop(stepnum)
+        protocols_dict.pop(stepnum)
 
     json.dump(protocols_dict,open(protocols_file,'w'),indent=4)
     json.dump(features_dict,open(features_file,'w'),indent=4)

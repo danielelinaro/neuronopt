@@ -9,7 +9,7 @@ def main():
     parser.add_argument('swc_file', type=str, action='store', help='SWC file')
     parser.add_argument('--el', default=-70., type=float, help='Leak reversal potential')
     parser.add_argument('--gl', default=3e-5, type=float, help='Leak conductance')
-    parser.add_argument('--ra', default=1.0, type=float, help='Axial resistance')
+    parser.add_argument('--ra', default=100.0, type=float, help='Axial resistance')
     parser.add_argument('--cm', default=1.0, type=float, help='Somatic and axonal capacitance')
     parser.add_argument('--cm-basal', default=2.0, type=float, help='Basal dendrite capacitance')
     parser.add_argument('--cm-apical', default=2.0, type=float, help='Apical dendrite capacitance')
@@ -20,7 +20,6 @@ def main():
         sys.exit(0)
         
     swc_filename = args.swc_file
-    #cell_name = os.path.basename(swc_filename).split('-.')[0].replace('-','_')
         
     dI = -0.1                 # [nA]
     Ra = args.ra

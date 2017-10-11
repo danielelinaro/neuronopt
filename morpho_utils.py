@@ -6,6 +6,7 @@ import argparse as arg
 import numpy as np
 from numpy.linalg import svd
 import btmorph
+from neuron import h
 
 # the name of this script
 progname = os.path.basename(sys.argv[0])
@@ -158,50 +159,9 @@ def convert():
 ###                        BUILD                         ###
 ############################################################
 
-def create_empty_template(template_name,seclist_names=None,secarray_names=None):
-    '''create an hoc template named template_name for an empty cell'''
-    
-    objref_str = 'objref this, CellRef'
-    newseclist_str = ''
-    
-    if seclist_names:
-        for seclist_name in seclist_names:
-            objref_str += ', %s' % seclist_name
-            newseclist_str += \
-                              '             %s = new SectionList()\n' % seclist_name
-
-    create_str = ''
-    if secarray_names:
-        create_str = 'create '
-        create_str += ', '.join(
-            '%s[1]' % secarray_name
-            for secarray_name in secarray_names)
-        create_str += '\n'
-
-    template = '''\
-    begintemplate %(template_name)s
-    %(objref_str)s
-    proc init() {\n%(newseclist_str)s
-    forall delete_section()
-    CellRef = this
-    }
-
-    gid = 0
-
-    proc destroy() {localobj nil
-    CellRef = nil
-    }
-
-    %(create_str)s
-    endtemplate %(template_name)s
-    ''' % dict(template_name=template_name, objref_str=objref_str,
-               newseclist_str=newseclist_str,
-               create_str=create_str)
-
-    return template
-
-
 def build():
+    import cell_utils
+    
     parser = arg.ArgumentParser(description='Use a converted morphology to build a cell in NEURON',
                                 prog=progname+' build')
     parser.add_argument('swc_file', type=str, action='store', help='SWC file')
@@ -214,24 +174,8 @@ def build():
 
     output_file = args.swc_file.split('.swc')[0] + '.log'
 
-    from neuron import h
-    
-    cell_name = 'CA3_cell'
-    seclist_names = ['all', 'somatic', 'basal', 'apical', 'axonal', 'myelinated']
-    secarray_names = ['soma', 'dend', 'apic', 'axon', 'myelin']
-    template = create_empty_template(cell_name,seclist_names,secarray_names)
-    h(template)
-    template_function = getattr(h, cell_name)
-    cell = template_function()
-
-    h.load_file('stdlib.hoc')
-    h.load_file('stdrun.hoc')
-    h.load_file('import3d.hoc')
-
-    import3d = h.Import3d_SWC_read()
-    import3d.input(args.swc_file)
-    gui = h.Import3d_GUI(import3d, 0)
-    gui.instantiate(cell)
+    cell = cell_utils.Cell('CA3_cell',{'morphology':args.swc_file})
+    cell.instantiate()
 
     regions = ('soma','axon','basal','apical')
     nsections = {r: 0 for r in regions}
@@ -239,7 +183,7 @@ def build():
     lengths = {r: 0 for r in regions}
     areas = {r: 0 for r in regions}
     for reg in regions:
-        region = getattr(cell,reg)
+        region = getattr(cell.morpho,reg)
         for sec in region:
             nsections[reg] += 1
             npoints[reg] += h.n3d(sec=sec)
