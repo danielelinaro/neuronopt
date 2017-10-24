@@ -70,6 +70,8 @@ def write_features():
     features = []
     for f in args.files:
         data = pickle.load(open(f,'r'))
+        stim_dur = data['stim_dur']
+        stim_start = data['stim_start']
         features.append(data['features'])
         amplitudes.append(data['current_amplitudes'])
 
@@ -80,7 +82,10 @@ def write_features():
         if len(amps) < nsteps:
             print('Not enough distinct amplitudes.')
             sys.exit(0)
-        min_amp = amps[0]
+        j = 0
+        while feature[j]['Spikecount'][0] == 0:
+            j = j+1
+        min_amp = amps[j]
         max_amp = amps[-1]
         amp_step = (max_amp-min_amp)/(nsteps-1)
         desired_amps[i,:] = np.arange(min_amp,max_amp+amp_step/2,amp_step)
@@ -92,8 +97,8 @@ def write_features():
     for i in range(nsteps):
         stepnum = 'Step%d'%(i+1)
         protocols_dict[stepnum] = {'stimuli': [{
-            'delay': 500, 'amp': np.mean(desired_amps[:,i]),
-            'duration': 2000, 'totduration': 3000}]}
+            'delay': stim_start, 'amp': np.mean(desired_amps[:,i]),
+            'duration': stim_dur, 'totduration': stim_dur+2*stim_start}]}
 
     flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -114,6 +119,10 @@ def write_features():
             if len(all_features[i][name]) > 0:
                 features_dict[stepnum]['soma'][name] = [np.mean(all_features[i][name]),
                                                         np.std(all_features[i][name])]
+                if features_dict[stepnum]['soma'][name][1] == 0:
+                    features_dict[stepnum]['soma'][name][1] = np.abs(features_dict[stepnum]['soma'][name][0]/5)
+                    print(('Standard deviation of feature %s for %s is 0: ' + \
+                          'setting it to %g.') % (name,stepnum,features_dict[stepnum]['soma'][name][1]))
 
     num_features = len(feature_names)
     to_remove = []
