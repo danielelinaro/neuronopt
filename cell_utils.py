@@ -95,8 +95,12 @@ class Cell (object):
 
 
     def __init__(self, cell_name, config_files, set_nseg=True, replace_axon=False):
+        defaults = {'mechanisms': 'mechanisms.json','parameters': 'parameters.json'}
         self.cell_name = cell_name
         self.config_files = config_files
+        for k,v in defaults.iteritems():
+            if k not in self.config_files:
+                self.config_files[k] = v
         self.seclist_names = ['all', 'somatic', 'basal', 'apical', 'axonal', 'myelinated']
         self.secarray_names = ['soma', 'dend', 'apic', 'axon', 'myelin']
         self.do_set_nseg = set_nseg
