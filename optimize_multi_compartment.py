@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--protocols', default='protocols.json', type=str, help='protocols')
     parser.add_argument('-p', '--population-size', default=100, type=int, help='population size')
     parser.add_argument('-g', '--num-generation', default=100, type=int, help='number of generations')
+    parser.add_argument('--replace-axon', action='store_true', help='replace the axon in the SWC file with an AIS stub')
     args = parser.parse_args(args=sys.argv[1:])
 
     if args.swc_file.lower() in ('thorny','rs'):
@@ -88,7 +89,7 @@ def main():
         else:
             print('%s: %s: cannot find file.' % (os.path.basename(sys.argv[0]),f))
 
-    evaluator = dlopt.evaluator.create(cell_name, filenames, config_dir=args.config_dir)
+    evaluator = dlopt.evaluator.create(cell_name, filenames, replace_axon=args.replace_axon, config_dir=args.config_dir)
     print(evaluator.cell_model)
 
     seed = int(time.time())
@@ -104,12 +105,15 @@ def main():
 
     #### let's simulate the responses of the hall of fame population
     responses = get_responses(evaluator, hall_of_fame, output_folder+'/hall_of_fame_responses.pkl')
+
+    #### save everything
     pickle.dump(hall_of_fame, open(output_folder+'/hall_of_fame.pkl','w'))
     pickle.dump(final_pop, open(output_folder+'/final_population.pkl','w'))
     pickle.dump(evaluator, open(output_folder+'/evaluator.pkl','w'))
     pickle.dump(logbook, open(output_folder+'/logbook.pkl','w'))
     pickle.dump(history, open(output_folder+'/history.pkl','w'))
-    pickle.dump(seed, open(output_folder+'/seed.pkl','w'))
+    pickle.dump({'seed': seed, 'replace_axon': args.replace_axon}, 
+                open(output_folder+'/simulation_parameters.pkl','w'))
 
 if __name__ == '__main__':
     main()

@@ -118,20 +118,15 @@ def define_parameters(config_dir='config',parameters_file='parameters.json'):
     return parameters
 
 
-def define_morphology(morphology_file, simplify_morphology):
+def define_morphology(morphology_file,replace_axon):
     """Define morphology"""
-    extension = morphology_file.split('.')[-1]
-    if extension == 'asc':
-        simplify_morphology = False
-    if simplify_morphology:
-        return morphology.SWCFileSimplifiedMorphology(morphology_file, do_replace_axon=True, do_set_nseg=True)    
-    return ephys.morphologies.NrnFileMorphology(morphology_file, do_replace_axon=True, do_set_nseg=True)
+    return ephys.morphologies.NrnFileMorphology(morphology_file, do_replace_axon=replace_axon, do_set_nseg=True)
 
 
-def create_cell(cell_name, morphology_file, simplify_morphology=True, config_dir='config',
+def create_cell(cell_name, morphology_file, replace_axon=True, config_dir='config',
                 mechanisms_file='mechanisms.json', parameters_file='parameters.json'):
     """Create cell model"""
     return ephys.models.CellModel(cell_name,
-                                  morph=define_morphology(morphology_file, simplify_morphology),
+                                  morph=define_morphology(morphology_file, replace_axon),
                                   mechs=define_mechanisms(config_dir, mechanisms_file),
                                   params=define_parameters(config_dir, parameters_file))

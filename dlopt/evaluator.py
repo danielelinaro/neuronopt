@@ -135,7 +135,7 @@ def define_fitness_calculator(protocols, config_dir='config', features_file='fea
     return fitcalc
 
 
-def create(cell_name, filenames, config_dir='config', simplify_morphology=False):
+def create(cell_name, filenames, replace_axon=True, config_dir='config'):
     """Setup"""
 
     for k in ('mechanisms','parameters','protocols','features'):
@@ -144,7 +144,7 @@ def create(cell_name, filenames, config_dir='config', simplify_morphology=False)
     for k,v in filenames.iteritems():
         print('%s file: %s' % (k,v))
         
-    cell = model.create_cell(cell_name, filenames['morphology'], simplify_morphology,
+    cell = model.create_cell(cell_name, filenames['morphology'], replace_axon,
                              config_dir, filenames['mechanisms'], filenames['parameters'])
 
     fitness_protocols = define_protocols(config_dir, filenames['protocols'])
