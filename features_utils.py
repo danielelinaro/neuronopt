@@ -40,6 +40,10 @@ def write_features():
                                 prog=progname+' write')
     parser.add_argument('files', type=str, nargs='+',
                         help='pkl files containing the data relative to each cell')
+    parser.add_argument('-N', '--nsteps', default=3, type=int,
+                        help='number of current steps to include in the protocols (default: 3)')
+    parser.add_argument('--round-amp', default=0.025, type=float,
+                        help='the current amplitudes will be rounded to the closest integer multiple of this quantity')
     parser.add_argument('--features-file', default=None,
                         help='output features file name (deault: features.json)')
     parser.add_argument('--protocols-file', default=None,
@@ -53,6 +57,14 @@ def write_features():
         if not os.path.isfile(f):
             print('%s: %s: no such file.' % (progname,f))
             sys.exit(1)
+
+    if args.nsteps <= 0:
+        print('%s: the number of features must be greater than 0.' % progname)
+        sys.exit(1)
+
+    if args.round_amp <= 0:
+        print('%s: the rounding amplitude  must be greater than 0.' % progname)
+        sys.exit(1)
 
     if args.features_file is None:
         features_file = 'features'
@@ -75,7 +87,7 @@ def write_features():
         features.append(data['features'])
         amplitudes.append(data['current_amplitudes'])
 
-    nsteps = 3
+    nsteps = args.nsteps
     desired_amps = np.zeros((len(amplitudes),nsteps))
     for i,(amplitude,feature) in enumerate(zip(amplitudes,features)):
         amps = np.unique(amplitude)
@@ -97,7 +109,7 @@ def write_features():
     for i in range(nsteps):
         stepnum = 'Step%d'%(i+1)
         protocols_dict[stepnum] = {'stimuli': [{
-            'delay': stim_start, 'amp': np.mean(desired_amps[:,i]),
+            'delay': stim_start, 'amp': np.round(np.mean(desired_amps[:,i])/args.round_amp)*args.round_amp,
             'duration': stim_dur, 'totduration': stim_dur+2*stim_start}]}
 
     flatten = lambda l: [item for sublist in l for item in sublist]
@@ -156,6 +168,32 @@ def write_features():
 ############################################################
 
 
+def extract_features_from_LCG_files(files_in, kernel_file, file_out):
+    import lcg
+    import aec
+    Ke = np.loadtxt(kernel_file)
+    traces = []
+    amplitudes = []
+    for f in files_in:
+        entities,info = lcg.loadH5Trace(f)
+        stim_start = entities[1]['metadata'][0,0]*1e3
+        stim_dur = entities[1]['metadata'][1,0]*1e3
+        I = entities[1]['data']
+        Vr = entities[0]['data']
+        Vc = aec.compensate(Vr,I*1e-9,Ke)
+        time = np.arange(len(Vc)) * info['dt'] * 1e3
+        if np.max(Vc) > -20:
+            traces.append({'T': time, 'V': Vc, 'stim_start': [stim_start], 'stim_end': [stim_start+stim_dur]})
+            amplitudes.append(entities[1]['metadata'][1,2]*1e-3)
+            print(amplitudes[-1])
+            plt.plot(time,Vc,'k',lw=1)
+            plt.show()
+    features = efel.getFeatureValues(traces,feature_names)
+    data = {'features': features, 'current_amplitudes': amplitudes, \
+            'stim_dur': stim_dur, 'stim_start': stim_start}
+    pickle.dump(data,open(file_out,'w'))
+
+
 def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
     stim_end = stim_start + stim_dur
 
@@ -170,9 +208,13 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
     idx, = np.where((time>stim_start) & (time<=stim_end))
     traces = [{'T': time[idx], 'V': sweep[idx], 'stim_start': [stim_start], 'stim_end': [stim_end]} \
               for sweep in voltage]
-    plt.plot(time,voltage.T,lw=1)
+    voltage_range = [np.min(voltage),np.max(voltage)]
+    recording_dur = time[-1]
 
-    return efel.getFeatureValues(traces,feature_names)
+    if voltage_range[0] > -100 and (voltage_range[1] > 0 and voltage_range[1] < 100):
+        plt.plot(time,voltage.T,lw=1)
+
+    return efel.getFeatureValues(traces,feature_names),voltage_range,recording_dur
 
 
 def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,sampling_rate=20,files_out=[]):
@@ -183,9 +225,9 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         with_spikes = []
         offset = 0
         for i,f in enumerate(files_in):
-            feat = extract_features_from_file(f,stim_dur,stim_start,sampling_rate)
-            jdx, = np.where([not all(v is None for v in f.values()) for f in feat])
-            if len(jdx) > 0:
+            feat,voltage_range,_ = extract_features_from_file(f,stim_dur,stim_start,sampling_rate)
+            jdx, = np.where([not all(v is None for v in fe.values()) for fe in feat])
+            if voltage_range[0] > -100 and (voltage_range[1] > 0 and voltage_range[1] < 100):
                 for j in jdx:
                     features.append(feat[j])
                     with_spikes.append(offset + j)
@@ -272,7 +314,10 @@ def extract_features():
             print('%s: %s: no such directory.' % (progname,args.folder))
             sys.exit(1)
         folder = os.path.abspath(args.folder)
-        mode = 'CA3'
+        if len(glob.glob(folder + '/*.h5')) > 0:
+            mode = 'LCG'
+        else:
+            mode = 'CA3'
     else:
         if not os.path.isfile(args.file):
             print('%s: %s: no such file.' % (progname,args.file))
@@ -327,9 +372,21 @@ def extract_features():
             Imin = args.Imin
         current_amplitudes = np.arange(nsteps)*Istep + Imin
         current_amplitudes = current_amplitudes.tolist()
+    elif mode == 'LCG':
+        h5_files = glob.glob(folder + '/*.h5')
+        files_in = []
+        file_out = folder.split('/')[-2] + '.pkl'
+        for file in h5_files:
+            if not os.path.isfile(file.split('.h5')[0] + '_kernel.dat'):
+                files_in.append(file)
+            else:
+                kernel_file = file.split('.h5')[0] + '_kernel.dat'
 
-    extract_features_from_files(files_in,current_amplitudes,args.stim_dur,args.stim_start,
-                                args.sampling_rate,files_out=[folder+'/'+file_out])
+    if mode == 'LCG':
+        extract_features_from_LCG_files(files_in, kernel_file, folder+'/'+file_out)
+    else:
+        extract_features_from_files(files_in,current_amplitudes,args.stim_dur,args.stim_start,
+                                    args.sampling_rate,files_out=[folder+'/'+file_out])
 
     plt.xlabel('Time (ms)')
     plt.ylabel('Voltage (mV)')
