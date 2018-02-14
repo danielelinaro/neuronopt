@@ -3,6 +3,9 @@ from neuron import h
 import json
 import math
 
+h.load_file('stdlib.hoc')
+h.load_file('stdrun.hoc')
+
 class Cell (object):
     @staticmethod
     def create_empty_template(template_name, seclist_names=None, secarray_names=None):
@@ -113,8 +116,6 @@ class Cell (object):
         self.template_function = getattr(h, self.cell_name)
         self.morpho = self.template_function()
 
-        h.load_file('stdlib.hoc')
-        h.load_file('stdrun.hoc')
         h.load_file('import3d.hoc')
 
         self.import3d = h.Import3d_SWC_read()
@@ -129,6 +130,7 @@ class Cell (object):
             Cell.set_nseg(self.morpho)
 
         self.biophysics()
+
 
     def biophysics(self):
         mechanisms = json.load(open(self.config_files['mechanisms'],'r'))

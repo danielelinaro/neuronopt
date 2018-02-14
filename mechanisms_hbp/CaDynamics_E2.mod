@@ -31,6 +31,10 @@ STATE	{
 
 BREAKPOINT	{ SOLVE states METHOD cnexp }
 
+INITIAL {
+        cai = minCai
+}
+
 DERIVATIVE states	{
 	cai' = -(10000)*(ica*gamma/(2*FARADAY*depth)) - (cai - minCai)/decay
 }

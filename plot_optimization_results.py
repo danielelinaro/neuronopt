@@ -78,21 +78,29 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses):
     plt.axes([0.01,0.65,0.98,0.35])
     offset = 0
     n = 1
+    before = 250
+    after = 200
+    dx = 100
+    dy = 50
     for k in responses[0]:
         for i in range(n):
-            plt.plot(responses[i][k]['time'],responses[i][k]['voltage']+offset,color=[0 + 0.6/n*i for j in range(3)],linewidth=1)
+            # this is because of the variable time-step integration
+            start = np.where(responses[i][k]['time'] > stim_start-before)[0][0] - 1
+            stop = np.where(responses[i][k]['time'] < stim_end+after)[0][-1] + 2
+            idx = np.arange(start,stop)
+            plt.plot(responses[i][k]['time'][idx],responses[i][k]['voltage'][idx]+offset,
+                     color=[0 + 0.6/n*i for j in range(3)],linewidth=1)
         old_offset = offset
         offset += np.diff([np.min(responses[0][k]['voltage']),np.max(responses[0][k]['voltage'])])[0] + 5
 
-    dx = 200
-    dy = 50
-    plt.plot(100+np.zeros(2),old_offset-dy/2+np.array([0,dy]),'k',linewidth=1)
-    plt.plot(100+np.array([0,dx]),old_offset-dy/2+np.zeros(2),'k',linewidth=1)
-    plt.text(100+dx/2,old_offset-dy/2*1.3,'%d ms'%dx,fontsize=8,
+    plt.plot(stim_start-before+100+np.zeros(2),old_offset-dy/2+np.array([0,dy]),'k',linewidth=1)
+    plt.plot(stim_start-before+100+np.array([0,dx]),old_offset-dy/2+np.zeros(2),'k',linewidth=1)
+    plt.text(stim_start-before+100+dx/2,old_offset-dy/2*1.3,'%d ms'%dx,fontsize=8,
              verticalalignment='top',horizontalalignment='center')
-    plt.text(70,old_offset,'%d mV'%dy,rotation=90,fontsize=8,
+    plt.text(stim_start-before+70,old_offset,'%d mV'%dy,rotation=90,fontsize=8,
              verticalalignment='center',horizontalalignment='center')
     plt.axis('tight')
+    plt.xlim([stim_start-before,stim_end+after])
     plt.axis('off')
 
     fnt = 9
@@ -257,38 +265,23 @@ def define_morphology(swc_filename):
 def simulate_optimal_model(swc_file):
     """Simulate cell model"""
 
-    import cell_utils
-    cell = cell_utils.Cell('CA3_cell',{'morphology': swc_file,
-                                       'mechanisms': 'mechanisms.json',
-                                       'parameters': 'optimal_parameters.json'})
-    cell.instantiate()
+    cells = []
 
-    stim = h.IClamp(cell.morpho.soma[0](0.5))
-    stim.amp = 0.3
-    stim.delay = 250
-    stim.dur = 1000
-
-    recorders = {'t': h.Vector(), 'v': h.Vector()}
-    recorders['t'].record(h._ref_t)
-    recorders['v'].record(cell.morpho.soma[0](0.5)._ref_v)
-
-    h.cvode_active(1)
-    h.tstop = stim.dur + 2*stim.delay
-    h.t = 0
-    h.run()
+    amp = 0.3
+    delay = 125.
+    dur = 500.
 
     cell = ephys.models.CellModel(
         'CA3',
         morph=define_morphology(swc_file),
         mechs=define_mechanisms(),
         params=define_parameters())
-
-    #print(cell)
+    cells.append(cell)
 
     soma_loc = ephys.locations.NrnSeclistCompLocation(name='soma',seclist_name='somatic',sec_index=0,comp_x=0.5)
 
-    stim = ephys.stimuli.NrnSquarePulse(step_amplitude=stim.amp,step_delay=stim.delay,step_duration=stim.dur,
-                                        location=soma_loc,total_duration=stim.dur+2*stim.delay)
+    stim = ephys.stimuli.NrnSquarePulse(step_amplitude=amp,step_delay=delay,step_duration=dur,
+                                        location=soma_loc,total_duration=dur+2*delay)
     rec = ephys.recordings.CompRecording(name='step.soma.v',location=soma_loc,variable='v')
     step_protocols = ephys.protocols.SequenceProtocol('step', protocols=[ephys.protocols.SweepProtocol('step', [stim], [rec])])
 
@@ -300,12 +293,49 @@ def simulate_optimal_model(swc_file):
     t = np.array(responses['step.soma.v']['time'])
     V = np.array(responses['step.soma.v']['voltage'])
 
+    #### load the saved data
+    hof_responses = pickle.load(open('hall_of_fame_responses.pkl','r'))
+    hof_t = hof_responses[0]['Step3.soma.v']['time']
+    hof_V = hof_responses[0]['Step3.soma.v']['voltage']
+
+    import cell_utils
+    cell = cell_utils.Cell('CA3_cell',{'morphology': swc_file,
+                                       'mechanisms': 'mechanisms.json',
+                                       'parameters': 'optimal_parameters.json'}, h)
+    cell.instantiate()
+    cells.append(cell)
+
+    cclamp = h.IClamp(cell.morpho.soma[0](0.5))
+    cclamp.amp = amp
+    cclamp.delay = delay
+    cclamp.dur = dur
+
+    recorders = {'t': h.Vector(), 'v': h.Vector()}
+    recorders['t'].record(h._ref_t)
+    recorders['v'].record(cell.morpho.soma[0](0.5)._ref_v)
+
+    if h.cvode_active():
+        print('CVode is active. minstep = %g ms. reltol = %g, abstol = %g. celsius = %g C.' % \
+              (nrn.neuron.h.cvode.minstep(),nrn.neuron.h.cvode.rtol(),nrn.neuron.h.cvode.atol(),nrn.neuron.h.celsius))
+    else:
+        print('CVode is not active.')
+
+    #h.cvode_active(1)
+    #h.cvode.rtol(1e-6)
+    #h.cvode.atol(1e-3)
+    h.celsius = 36
+    h.tstop = dur + 2*delay
+    h.t = 0
+    h.run()
+
     #### let's plot the results
     plt.figure()
-    plt.plot(t,V,'k')
-    plt.plot(recorders['t'],recorders['v'],'r')
+    plt.plot(t,V,'k',label='BPO simulation')
+    plt.plot(hof_t,hof_V,'b',label='BPO optimization')
+    plt.plot(recorders['t'],recorders['v'],'r',label='My simulation')
     plt.xlabel('Time (ms)')
     plt.ylabel(r'$V_m$ (mV)')
+    plt.legend(loc='best')
     plt.show()
 
 
@@ -313,8 +343,8 @@ def main():
     parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses = load_files()
     plot_summary(features,hall_of_fame,final_pop,evaluator,responses)
     write_optimal_parameters(parameters,hall_of_fame,evaluator)
-    #swc_file = glob.glob('*.swc')[0]
-    #simulate_optimal_model(swc_file)
+    # swc_file = glob.glob('*.swc')[0]
+    # simulate_optimal_model(swc_file)
     
 
 if __name__ == '__main__':
