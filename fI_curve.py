@@ -45,10 +45,20 @@ def main():
     stim.dur = args.dur
 
     recorders = {'spike_times': h.Vector()}
-    recorders['t'] = h.Vector()
+    for lbl in 't','Vsoma','Vaxon','Vapic','Vbasal','ICa':
+        recorders[lbl] = h.Vector()
     recorders['t'].record(h._ref_t)
-    recorders['v'] = h.Vector()
-    recorders['v'].record(cell.morpho.soma[0](0.5)._ref_v)
+    recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
+    recorders['Vaxon'].record(cell.morpho.axon[4](0.5)._ref_v)
+    for sec,dst in zip(cell.morpho.apic,cell.apical_path_lengths):
+        if dst[0] >= 100:
+            recorders['Vapic'].record(sec(0.5)._ref_v)
+            break
+    for sec,dst in zip(cell.morpho.dend,cell.basal_path_lengths):
+        if dst[0] >= 100:
+            recorders['Vbasal'].record(sec(0.5)._ref_v)
+            break
+    recorders['ICa'].record(cell.morpho.soma[0](0.5)._ref_ica)
     apc = h.APCount(cell.morpho.soma[0](0.5))
     apc.record(recorders['spike_times'])
 
@@ -57,33 +67,40 @@ def main():
     h.cvode_active(1)
     h.tstop = stim.dur + stim.delay + 100
 
-    plt.figure()
     for amp in I:
+        print('Simulating I = %g pA.' % (amp*1e3))
         stim.amp = amp
         apc.n = 0
         h.t = 0
         h.run()
         spike_times.append(np.array(recorders['spike_times']))
-        t = np.array(recorders['t'])
-        V = np.array(recorders['v'])
-        idx, = np.where((t > args.delay-50) & (t < args.delay+550))
-        if amp in [0.15,0.2,0.3]:
-            plt.plot(t[idx],V[idx])
+        #print(spike_times[-1] - args.delay)
+        if len(I) == 1:
+            plt.figure()
+            t = np.array(recorders['t'])
+            plt.plot(t,recorders['Vaxon'],'r',label='Axon')
+            plt.plot(t,recorders['Vbasal'],'g',label='Basal')
+            plt.plot(t,recorders['Vapic'],'b',label='Apical')
+            plt.plot(t,recorders['Vsoma'],'k',label='Soma')
+            plt.legend(loc='best')
+            plt.ylabel(r'$V_m$ (mV)')
+            plt.xlabel('Time (ms)')
 
     no_spikes = map(lambda x: x.shape[0]/args.dur*1e3, spike_times)
     f = map(lambda x: len(np.where(x > args.delay+args.tran)[0])/(args.dur-args.tran)*1e3, spike_times)
     inverse_first_isi = [1e3/np.diff(t[:2]) if len(t) > 1 else 0 for t in spike_times]
     inverse_last_isi = [1e3/np.diff(t[-2:]) if len(t) > 1 else 0 for t in spike_times]
 
-    plt.figure()
-    plt.plot(I,no_spikes,'ro-',label='All spikes')
-    plt.plot(I,f,'ko-',label='With transient removed')
-    plt.plot(I,inverse_first_isi,'bo-',label='Inverse first ISI')
-    plt.plot(I,inverse_last_isi,'mo-',label='Inverse last ISI')
-    plt.xlabel('Current (nA)')
-    plt.ylabel(r'$f$ (spikes/s)')
-    plt.legend(loc='best')
-    plt.show()
+    if True:
+        plt.figure()
+        plt.plot(I,no_spikes,'ro-',label='All spikes')
+        plt.plot(I,f,'ko-',label='With transient removed')
+        plt.plot(I,inverse_first_isi,'bo-',label='Inverse first ISI')
+        plt.plot(I,inverse_last_isi,'mo-',label='Inverse last ISI')
+        plt.xlabel('Current (nA)')
+        plt.ylabel(r'$f$ (spikes/s)')
+        plt.legend(loc='best')
+        plt.show()
 
 if __name__ == '__main__':
     main()

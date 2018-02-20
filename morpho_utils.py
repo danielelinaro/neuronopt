@@ -32,6 +32,7 @@ def convert():
     parser.add_argument('-f', '--force', action='store_true', help='force overwrite of existing output file')
     parser.add_argument('-o', '--output', default=None, type=str, help='output file name')
     parser.add_argument('-c', '--coeff', default=1, type=float, help='coefficient to multiply coordinates and radius')
+    parser.add_argument('--flip-y', action='store_true', help='flip Y coordinate')
     args = parser.parse_args(args=sys.argv[2:])
     
     f_in = args.swc_file
@@ -151,8 +152,9 @@ def convert():
             index = -1
         else:
             index = node.parent.index
+        y_coeff = -1 if args.flip_y else 1
         fid.write('%d %d %g %g %g %g %d\n' % (node.index,node.content['p3d'].type,
-                                              xyz[0]*args.coeff, xyz[1]*args.coeff, xyz[2]*args.coeff,
+                                              xyz[0]*args.coeff, xyz[1]*args.coeff*y_coeff, xyz[2]*args.coeff,
                                               node.content['p3d'].radius*args.coeff, index))
     fid.close()
 

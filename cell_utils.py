@@ -1,10 +1,26 @@
 
-from neuron import h
 import json
-import math
+import numpy as np
+from neuron import h
 
 h.load_file('stdlib.hoc')
 h.load_file('stdrun.hoc')
+
+DEBUG = False
+
+def compute_section_area(section):
+    a = 0.
+    for segment in section:
+        a += h.area(segment.x, sec=section)
+    return a
+
+
+def distance(origin, end, x=0.5):
+    h.distance(sec=origin)
+    return h.distance(x, sec=end)
+
+def dst(x,y):
+    return np.sqrt(np.sum((x-y)**2))
 
 class Cell (object):
     @staticmethod
@@ -106,9 +122,9 @@ class Cell (object):
                 self.config_files[k] = v
         self.seclist_names = ['all', 'somatic', 'basal', 'apical', 'axonal', 'myelinated']
         self.secarray_names = ['soma', 'dend', 'apic', 'axon', 'myelin']
+        self.has_axon = True
         self.do_set_nseg = set_nseg
         self.do_replace_axon = replace_axon
-
 
     def instantiate(self):
         self.template = Cell.create_empty_template(self.cell_name,self.seclist_names,self.secarray_names)
@@ -131,6 +147,10 @@ class Cell (object):
 
         self.biophysics()
 
+        h.distance(sec=self.morpho.soma[0])
+        self.compute_total_area()
+        self.compute_measures()
+        self.compute_path_lengths()
 
     def biophysics(self):
         mechanisms = json.load(open(self.config_files['mechanisms'],'r'))
@@ -169,3 +189,89 @@ class Cell (object):
                             setattr(sec,param['param_name'],g)
             else:
                 print('Unknown parameter type: %s.' % param['type'])
+
+
+    def compute_total_area(self):
+        self.total_area = 0
+        for sec in self.morpho.all:
+            for seg in sec:
+                self.total_area += h.area(seg.x, sec)
+        if DEBUG:
+            print('Total area: %.0f um^2.' % self.total_area)
+
+
+    def distance_from_soma(self, sec, x=0.5):
+        return distance(self.morpho.soma[0], sec, x)
+
+
+    def compute_measures(self):
+        # the areas of all sections in the soma
+        self.soma_areas = []
+        for sec in self.morpho.somatic:
+            self.soma_areas.append(compute_section_area(sec))
+
+        # the areas of all sections in the apical dendrite
+        self.apical_areas = []
+        # the distances of all apical sections from the soma: here the
+        # distance is just the Euclidean one, not the path length
+        self.apical_distances = []
+        for sec in self.morpho.apical:
+            self.apical_distances.append(self.distance_from_soma(sec))
+            self.apical_areas.append(compute_section_area(sec))
+
+        # the areas of all sections in the basal dendrites
+        self.basal_areas = []
+        # the distances of all basal sections from the soma
+        self.basal_distances = []
+        for sec in self.morpho.basal:
+            self.basal_distances.append(self.distance_from_soma(sec))
+            self.basal_areas.append(compute_section_area(sec))
+
+        self.total_area = np.sum(self.soma_areas) + np.sum(self.apical_areas) + np.sum(self.basal_areas)
+
+        if self.has_axon:
+            # the areas of the sections in the axon
+            self.axon_areas = []
+            # the path length of each section in the axon from the root
+            self.axon_lengths = []
+            for sec in self.morpho.axonal:
+                self.axon_areas.append(compute_section_area(sec))
+                # here we are assuming that the axon extends vertically from the soma,
+                # in which case distance and path length are the same. if this is not the
+                # case, the subclass should override this method and implement its own code
+                self.axon_lengths.append(self.distance_from_soma(sec))
+            self.total_area += np.sum(self.axon_areas)
+
+
+    def compute_path_lengths(self):
+        self.path_lengths = {self.morpho.soma[0].name(): np.array([0.0])}
+        self.basal_path_lengths = []
+        self.apical_path_lengths = []
+        for sec in self.morpho.basal:
+            self.basal_path_lengths.append(self.compute_path_lengths_from_parent(sec))
+        for sec in self.morpho.apical:
+            self.apical_path_lengths.append(self.compute_path_lengths_from_parent(sec))
+
+
+    def compute_path_lengths_from_parent(self,sec):
+        make_point = lambda sec,i: np.array([h.x3d(i,sec=sec), \
+                                             h.y3d(i,sec=sec), \
+                                             h.z3d(i,sec=sec)])
+        key = sec.name()
+        parent = h.SectionRef(sec=sec).parent
+        if parent == self.morpho.soma[0]:
+            ### assuming 3-point soma
+            closest_parent_point = make_point(parent,1)
+        else:
+            n3d_parent = int(h.n3d(sec=parent))
+            closest_parent_point = make_point(parent,n3d_parent-1)
+        n3d = int(h.n3d(sec=sec))
+        point_A = make_point(sec,0)
+        self.path_lengths[key] = np.array([self.path_lengths[parent.name()][-1] + \
+                                           dst(closest_parent_point,point_A)])
+        for i in range(1,n3d):
+            point_B = make_point(sec,i)
+            self.path_lengths[key] = np.append(self.path_lengths[key],self.path_lengths[key][-1] + dst(point_A,point_B))
+            point_A = point_B
+
+        return self.path_lengths[key]
