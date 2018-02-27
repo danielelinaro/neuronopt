@@ -17,18 +17,33 @@ encoder.FLOAT_REPR = lambda o: format(o, '.4g')
 
 progname = os.path.basename(sys.argv[0])
 
-#feature_names = ['AP_height','AHP_slow_time','ISI_CV','doublet_ISI',
-#                 'adaptation_index2','mean_frequency','AHP_depth_abs_slow',
-#                 'AP_width','time_to_first_spike','AHP_depth_abs']
-#feature_names = ['AP_height','AP_begin_voltage','spike_half_width',
-#                 'time_to_first_spike','adaptation_index2',
-#                 'ISI_values','ISI_CV','doublet_ISI',
-#                 'AHP_depth_abs','AHP_slow_time','AHP_depth_abs_slow']
-feature_names = ['AP_amplitude','AP_begin_voltage','spike_half_width',
-                 'time_to_first_spike','adaptation_index2',
-                 'ISI_values','ISI_CV','doublet_ISI',
-                 'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
-                 'Spikecount','fast_AHP']
+cell_type = 'RS'
+
+# This is the full set of voltage features to extract for each individual cell, irrespective
+# of its type. The set of features that will be used in the optimization may be different, and
+# is specified by the variable "feature_names"
+feature_names_full_set = ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                          'time_to_first_spike','adaptation_index2',
+                          'ISI_values','ISI_CV','doublet_ISI',
+                          'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
+                          'Spikecount','fast_AHP','burst_mean_freq','interburst_voltage',
+                          'AP_rise_rate','AP_fall_rate','AP_amplitude_change',
+                          'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
+                          'AP_duration_half_width_change','amp_drop_first_second']
+
+feature_names = {'RS': ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                        'time_to_first_spike','adaptation_index2',
+                        'ISI_values','ISI_CV','doublet_ISI',
+                        'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
+                        'Spikecount','fast_AHP','AP_fall_rate','AP_rise_rate'],
+                 'B': ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                       'time_to_first_spike','doublet_ISI',
+                       'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
+                       'Spikecount','AP_fall_rate','AP_rise_rate',
+                       'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
+                       'amp_drop_first_second'],
+                 'test': feature_names_full_set}
+
 
 ############################################################
 ###                        WRITE                         ###
@@ -43,13 +58,15 @@ def write_features():
     parser.add_argument('-N', '--nsteps', default=3, type=int,
                         help='number of current steps to include in the protocols (default: 3)')
     parser.add_argument('--round-amp', default=0.025, type=float,
-                        help='the current amplitudes will be rounded to the closest integer multiple of this quantity')
+                        help='the current amplitudes will be rounded to the closest integer multiple of this quantity (default: 0.025 nA)')
     parser.add_argument('--features-file', default=None,
                         help='output features file name (deault: features.json)')
     parser.add_argument('--protocols-file', default=None,
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
+    parser.add_argument('--cell-type', default='RS',
+                        help='feature set to use (default: "RS". "B" also available)')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -77,6 +94,10 @@ def write_features():
     if args.suffix != '':
         protocols_file += '_' + args.suffix.replace('_','')
     protocols_file += '.json'
+
+    if not args.cell_type in feature_names.keys():
+        print('Unknown cell type "%s". Available values are "RS" or "B".' % args.cell_type)
+        sys.exit(1)
 
     amplitudes = []
     features = []
@@ -114,9 +135,9 @@ def write_features():
 
     flatten = lambda l: [item for sublist in l for item in sublist]
 
-    all_features = [{name: [] for name in feature_names} for i in range(nsteps)]
+    all_features = [{name: [] for name in feature_names[args.cell_type]} for i in range(nsteps)]
     features_dict = {'Step%d'%i: {'soma': {}} for i in range(1,4)}
-    for name in feature_names:
+    for name in feature_names[args.cell_type]:
         for i in range(len(args.files)):
             for j in range(len(amplitudes[i])):
                 idx, = np.where(amplitudes[i][j] == desired_amps[i])
@@ -136,7 +157,7 @@ def write_features():
                     print(('Standard deviation of feature %s for %s is 0: ' + \
                           'setting it to %g.') % (name,stepnum,features_dict[stepnum]['soma'][name][1]))
 
-    num_features = len(feature_names)
+    num_features = len(feature_names[args.cell_type])
     to_remove = []
     for stepnum,step in features_dict.iteritems():
         if len(step['soma']) < num_features:
@@ -188,7 +209,7 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out):
             print(amplitudes[-1])
             plt.plot(time,Vc,'k',lw=1)
             plt.show()
-    features = efel.getFeatureValues(traces,feature_names)
+    features = efel.getFeatureValues(traces,feature_names_full_set)
     data = {'features': features, 'current_amplitudes': amplitudes, \
             'stim_dur': stim_dur, 'stim_start': stim_start}
     pickle.dump(data,open(file_out,'w'))
@@ -214,7 +235,7 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
     if voltage_range[0] > -100 and (voltage_range[1] > 0 and voltage_range[1] < 100):
         plt.plot(time,voltage.T,lw=1)
 
-    return efel.getFeatureValues(traces,feature_names),voltage_range,recording_dur
+    return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
 
 
 def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,sampling_rate=20,files_out=[]):
@@ -314,10 +335,10 @@ def extract_features():
             print('%s: %s: no such directory.' % (progname,args.folder))
             sys.exit(1)
         folder = os.path.abspath(args.folder)
-        if len(glob.glob(folder + '/*.h5')) > 0:
-            mode = 'LCG'
-        else:
+        if len(glob.glob(folder + '/*.ibw')) > 0:
             mode = 'CA3'
+        else:
+            mode = 'LCG'
     else:
         if not os.path.isfile(args.file):
             print('%s: %s: no such file.' % (progname,args.file))
@@ -342,6 +363,10 @@ def extract_features():
         info = read_tab_delim_file(history_file)
 
     if mode == 'CA3':
+        try:
+            sweeps_to_ignore = map(int, open('IGNORE_SWEEPS','r').readlines())
+        except:
+            sweeps_to_ignore = []
         files_in = []
         file_out = folder.split('/')[-1] + '.pkl'
         current_amplitudes = []
@@ -354,7 +379,7 @@ def extract_features():
                         dur = float(p.split('=')[1])
                     elif 'amplitude' in p:
                         amp = float(p.split('=')[1])*info['multiplier'][i]*1e-3
-                if dur == args.stim_dur and amp>0:
+                if not info['sweep_index'][i] in sweeps_to_ignore and dur == args.stim_dur and amp > 0:
                     print('[%02d] dur=%g ms, amp=%g nA' % (info['sweep_index'][i],dur,amp))
                     files_in.append('ad0_%d.ibw' % info['sweep_index'][i])
                     current_amplitudes.append(amp)

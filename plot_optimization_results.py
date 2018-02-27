@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import json
 import efel
 import glob
@@ -43,7 +44,7 @@ def write_optimal_parameters(parameters,hall_of_fame,evaluator):
     json.dump(parameters,open('optimal_parameters.json','w'),indent=4)
 
 
-def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses):
+def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0):
     pop_size = len(final_pop)
     n_params = len(evaluator.param_names)
 
@@ -54,7 +55,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses):
         bounds[i,:] = evaluator.cell_model.params[evaluator.param_names[i]].bounds
     idx = np.argsort(bounds[:,1])
     params_median = np.median(params,1)
-    best_params = np.array(hall_of_fame[0])[idx]
+    best_params = np.array(hall_of_fame[individual])[idx]
     params = params[idx,:]
     params_median = params_median[idx]
     bounds = bounds[idx,:]
@@ -65,33 +66,36 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses):
     for proto,feature_names in target_features.iteritems():
         stim_start = evaluator.fitness_protocols[proto].stimuli[0].step_delay
         stim_end = stim_start + evaluator.fitness_protocols[proto].stimuli[0].step_duration
-        trace = {'T': responses[0][proto+'.soma.v']['time'],
-                 'V': responses[0][proto+'.soma.v']['voltage'],
+        trace = {'T': responses[individual][proto+'.soma.v']['time'],
+                 'V': responses[individual][proto+'.soma.v']['voltage'],
                  'stim_start': [stim_start], 'stim_end': [stim_end]}
         features[proto] = {k:[np.mean(v),np.std(v)] for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].iteritems()}
         features_std_units[proto] = {k:np.abs(target_features[proto]['soma'][k][0]-np.mean(v))/target_features[proto]['soma'][k][1] \
                                      for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].iteritems()}
+        print('%s:' % proto)
+        feature_values = efel.getFeatureValues([trace],feature_names['soma'])[0]
+        for name,values in feature_names['soma'].iteritems():
+            print('\t%s: model: %g (%g std from data mean). data: %g +- %g (std/mean: %g)' %
+                  (name,feature_values[name][0],np.abs(values[0]-feature_values[name][0])/values[1],
+                   values[0],values[1],values[1]/np.abs(values[0])))
 
-    nsteps = len(responses[0].keys())
+    nsteps = len(responses[individual].keys())
 
     plt.figure()
     plt.axes([0.01,0.65,0.98,0.35])
     offset = 0
-    n = 1
     before = 250
     after = 200
     dx = 100
     dy = 50
-    for k in responses[0]:
-        for i in range(n):
-            # this is because of the variable time-step integration
-            start = np.where(responses[i][k]['time'] > stim_start-before)[0][0] - 1
-            stop = np.where(responses[i][k]['time'] < stim_end+after)[0][-1] + 2
-            idx = np.arange(start,stop)
-            plt.plot(responses[i][k]['time'][idx],responses[i][k]['voltage'][idx]+offset,
-                     color=[0 + 0.6/n*i for j in range(3)],linewidth=1)
+    for resp in responses[individual].values():
+        # this is because of the variable time-step integration
+        start = np.where(resp['time'] > stim_start-before)[0][0] - 1
+        stop = np.where(resp['time'] < stim_end+after)[0][-1] + 2
+        idx = np.arange(start,stop)
+        plt.plot(resp['time'][idx],resp['voltage'][idx]+offset,'k',lw=1)
         old_offset = offset
-        offset += np.diff([np.min(responses[0][k]['voltage']),np.max(responses[0][k]['voltage'])])[0] + 5
+        offset += np.diff([np.min(resp['voltage']),np.max(resp['voltage'])])[0] + 5
 
     plt.plot(stim_start-before+100+np.zeros(2),old_offset-dy/2+np.array([0,dy]),'k',linewidth=1)
     plt.plot(stim_start-before+100+np.array([0,dx]),old_offset-dy/2+np.zeros(2),'k',linewidth=1)
@@ -123,7 +127,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses):
         for x,y in zip(X,Y):
             ax.add_patch(Rectangle((0,y-dy),x,2*dy,\
                                    edgecolor=green,facecolor=green,linewidth=1))
-
+        plt.plot([3,3],[np.min(Y)-1,np.max(Y)+1],'r--',lw=1)
         plt.title(stepnum,fontsize=fnt)
         plt.xlabel('Objective value (# std)',fontsize=fnt)
         
@@ -140,7 +144,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses):
         else:
             plt.yticks(Y,[])
         
-        plt.axis([0,np.ceil(np.max(X)),np.min(Y)-1,np.max(Y)+1])
+        plt.axis([0,np.max([3.1,np.ceil(np.max(X))]),np.min(Y)-1,np.max(Y)+1])
 
     blue = [.9,.9,1]
     ax = plt.axes([0.25,0.05,0.72,0.25])
@@ -157,7 +161,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses):
                                edgecolor=blue,facecolor=blue,linewidth=1))
 
 
-    outfile = os.path.basename(os.path.abspath('.')) + '.pdf'
+    outfile = os.path.basename(os.path.abspath('.')) + '_individual_%d.pdf' % individual
 
     plt.xlim([1e-6,1500])
     plt.ylim([-1,n_params])
@@ -341,8 +345,12 @@ def simulate_optimal_model(swc_file):
 
 def main():
     parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses = load_files()
-    plot_summary(features,hall_of_fame,final_pop,evaluator,responses)
     write_optimal_parameters(parameters,hall_of_fame,evaluator)
+    if len(sys.argv) == 2 and sys.argv[1] == '--all':
+        for individual in range(len(responses)):
+            plot_summary(features,hall_of_fame,final_pop,evaluator,responses,individual)
+    else:
+        plot_summary(features,hall_of_fame,final_pop,evaluator,responses,individual=0)
     # swc_file = glob.glob('*.swc')[0]
     # simulate_optimal_model(swc_file)
     
