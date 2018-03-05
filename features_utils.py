@@ -17,8 +17,6 @@ encoder.FLOAT_REPR = lambda o: format(o, '.4g')
 
 progname = os.path.basename(sys.argv[0])
 
-cell_type = 'RS'
-
 # This is the full set of voltage features to extract for each individual cell, irrespective
 # of its type. The set of features that will be used in the optimization may be different, and
 # is specified by the variable "feature_names"
@@ -36,12 +34,18 @@ feature_names = {'RS': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                         'ISI_values','ISI_CV','doublet_ISI',
                         'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
                         'Spikecount','fast_AHP','AP_fall_rate','AP_rise_rate'],
-                 'B': ['AP_amplitude','AP_begin_voltage','spike_half_width',
-                       'time_to_first_spike','doublet_ISI',
-                       'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
-                       'Spikecount','AP_fall_rate','AP_rise_rate',
-                       'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
-                       'amp_drop_first_second'],
+                 'B-01': ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                          'time_to_first_spike','doublet_ISI',
+                          'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
+                          'Spikecount','AP_fall_rate','AP_rise_rate',
+                          'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
+                          'amp_drop_first_second'],
+                 'B-02': ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                          'time_to_first_spike','doublet_ISI',
+                          'ISI_values','ISI_CV','burst_mean_freq','interburst_voltage',
+                          'Spikecount','AP_fall_rate','AP_rise_rate',
+                          'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
+                          'amp_drop_first_second'],
                  'test': feature_names_full_set}
 
 
@@ -96,7 +100,8 @@ def write_features():
     protocols_file += '.json'
 
     if not args.cell_type in feature_names.keys():
-        print('Unknown cell type "%s". Available values are "RS" or "B".' % args.cell_type)
+        print('Unknown cell type "%s". Available values are "%s".' % \
+              (args.cell_type,'", "'.join(feature_names.keys())))
         sys.exit(1)
 
     amplitudes = []
@@ -436,9 +441,52 @@ def help():
         print('Available commands are:')
         print('   extract        Extract the features from a given cell.')
         print('   write          Write a configuration file using data from multiple cells.')
+        print('   diff           Show differences between two feature files in a human way.')
         print('')
         print('Type \'%s help <command>\' for help about a specific command.' % progname)
 
+
+############################################################
+###                         DIFF                         ###
+############################################################
+
+def diff_features():
+    parser = arg.ArgumentParser(description='Show differences between two feature files.',
+                                prog=progname+' diff')
+    parser.add_argument('files', type=str, nargs=2, help='feature files')
+
+    args = parser.parse_args(args=sys.argv[2:])
+
+    for f in args.files:
+        if not os.path.isfile(f):
+            print('%s: %s: no such file.' % (progname,f))
+            sys.exit(1)
+
+    features = [json.load(open(f,'r')) for f in args.files]
+    arrow = ['<','>']
+    for step_num in features[0].keys():
+        printed_header = False
+        if step_num in features[1].keys():
+            for feature_name in features[0][step_num]['soma'].keys():
+                if feature_name in features[1][step_num]['soma'].keys():
+                    feature_values = np.array([feat[step_num]['soma'][feature_name] for feat in features])
+                    if np.any(np.abs(np.diff(feature_values,axis=0)) > 1e-6):
+                        if not printed_header:
+                            print('%s:' % step_num)
+                            printed_header = True
+                        print('\t%s: %s [%g,%g] %s [%g,%g]' % (feature_name,arrow[0],
+                                                               feature_values[0,0],feature_values[0,1],arrow[1],
+                                                               feature_values[1,0],feature_values[1,1]))
+
+    for this in range(2):
+        other = (this+1)%2
+        for step_num in features[this].keys():
+            if not step_num in features[other].keys():
+                print('%s %s' % (arrow[this],step_num))
+            else:
+                for feature_name in features[this][step_num]['soma'].keys():
+                    if not feature_name in features[other][step_num]['soma'].keys():
+                        print('%s %s:%s' % (arrow[this],step_num,feature_name))
 
 ############################################################
 ###                         MAIN                         ###
@@ -446,7 +494,7 @@ def help():
 
 
 # all the commands currently implemented
-commands = {'help': help, 'extract': extract_features, 'write': write_features}
+commands = {'help': help, 'extract': extract_features, 'write': write_features, 'diff': diff_features}
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):
