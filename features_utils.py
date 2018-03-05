@@ -27,9 +27,14 @@ feature_names_full_set = ['AP_amplitude','AP_begin_voltage','spike_half_width',
                           'Spikecount','fast_AHP','burst_mean_freq','interburst_voltage',
                           'AP_rise_rate','AP_fall_rate','AP_amplitude_change',
                           'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
-                          'AP_duration_half_width_change','amp_drop_first_second']
+                          'AP_duration_half_width_change','amp_drop_first_second',
+                          'mean_frequency','AP_height','AP_width','AHP_depth_abs']
 
-feature_names = {'RS': ['AP_amplitude','AP_begin_voltage','spike_half_width',
+feature_names = {'BBP': ['AP_height', 'AHP_slow_time', 'ISI_CV',
+                         'doublet_ISI','AHP_depth_abs_slow',
+                         'AP_width','time_to_first_spike','AHP_depth_abs',
+                         'adaptation_index2','mean_frequency'],
+                 'RS': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                         'time_to_first_spike','adaptation_index2',
                         'ISI_values','ISI_CV','doublet_ISI',
                         'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
@@ -61,6 +66,8 @@ def write_features():
                         help='pkl files containing the data relative to each cell')
     parser.add_argument('-N', '--nsteps', default=3, type=int,
                         help='number of current steps to include in the protocols (default: 3)')
+    parser.add_argument('--step-amps', default=str, type=str,
+                        help='current amplitudes to include in the protocols, in alternative to the --nsteps option')
     parser.add_argument('--round-amp', default=0.025, type=float,
                         help='the current amplitudes will be rounded to the closest integer multiple of this quantity (default: 0.025 nA)')
     parser.add_argument('--features-file', default=None,
@@ -79,24 +86,31 @@ def write_features():
             print('%s: %s: no such file.' % (progname,f))
             sys.exit(1)
 
-    if args.nsteps <= 0:
+    nsteps = args.nsteps
+    desired_amps = None
+
+    if args.step_amps != '':
+        desired_amps = map(float,args.step_amps.split(','))
+        nsteps = len(desired_amps)
+
+    if nsteps <= 0:
         print('%s: the number of features must be greater than 0.' % progname)
         sys.exit(1)
 
-    if args.round_amp <= 0:
+    if desired_amps is None and args.round_amp <= 0:
         print('%s: the rounding amplitude  must be greater than 0.' % progname)
         sys.exit(1)
 
     if args.features_file is None:
         features_file = 'features'
     if args.suffix != '':
-        features_file += '_' + args.suffix.replace('_','')
+        features_file += '_' + args.suffix
     features_file += '.json'
 
     if args.protocols_file is None:
         protocols_file = 'protocols'
     if args.suffix != '':
-        protocols_file += '_' + args.suffix.replace('_','')
+        protocols_file += '_' + args.suffix
     protocols_file += '.json'
 
     if not args.cell_type in feature_names.keys():
@@ -113,23 +127,25 @@ def write_features():
         features.append(data['features'])
         amplitudes.append(data['current_amplitudes'])
 
-    nsteps = args.nsteps
-    desired_amps = np.zeros((len(amplitudes),nsteps))
-    for i,(amplitude,feature) in enumerate(zip(amplitudes,features)):
-        amps = np.unique(amplitude)
-        if len(amps) < nsteps:
-            print('Not enough distinct amplitudes.')
-            sys.exit(0)
-        j = 0
-        while feature[j]['Spikecount'][0] == 0:
-            j = j+1
-        min_amp = amps[j]
-        max_amp = amps[-1]
-        amp_step = (max_amp-min_amp)/(nsteps-1)
-        desired_amps[i,:] = np.arange(min_amp,max_amp+amp_step/2,amp_step)
-        for j in range(nsteps):
-            if not desired_amps[i,j] in amps:
-                desired_amps[i,j] = amps[np.argmin(np.abs(amps - desired_amps[i,j]))]
+    if desired_amps is None:
+        desired_amps = np.zeros((len(amplitudes),nsteps))
+        for i,(amplitude,feature) in enumerate(zip(amplitudes,features)):
+            amps = np.unique(amplitude)
+            if len(amps) < nsteps:
+                print('Not enough distinct amplitudes.')
+                sys.exit(0)
+            j = 0
+            while feature[j]['Spikecount'][0] == 0:
+                j = j+1
+            min_amp = amps[j]
+            max_amp = amps[-1]
+            amp_step = (max_amp-min_amp)/(nsteps-1)
+            desired_amps[i,:] = np.arange(min_amp,max_amp+amp_step/2,amp_step)
+            for j in range(nsteps):
+                if not desired_amps[i,j] in amps:
+                    desired_amps[i,j] = amps[np.argmin(np.abs(amps - desired_amps[i,j]))]
+    else:
+        desired_amps = np.tile(np.array(desired_amps),(len(amplitudes),1))
 
     protocols_dict = {}
     for i in range(nsteps):
@@ -424,31 +440,10 @@ def extract_features():
     plt.show()
 
 
-
-############################################################
-###                         HELP                         ###
-############################################################
-
-
-def help():
-    if len(sys.argv) > 2 and sys.argv[2] in commands:
-        cmd = sys.argv[2]
-        sys.argv = [sys.argv[0], cmd, '-h']
-        commands[cmd]()
-    else:
-        print('Usage: %s <command> [<args>]' % progname)
-        print('')
-        print('Available commands are:')
-        print('   extract        Extract the features from a given cell.')
-        print('   write          Write a configuration file using data from multiple cells.')
-        print('   diff           Show differences between two feature files in a human way.')
-        print('')
-        print('Type \'%s help <command>\' for help about a specific command.' % progname)
-
-
 ############################################################
 ###                         DIFF                         ###
 ############################################################
+
 
 def diff_features():
     parser = arg.ArgumentParser(description='Show differences between two feature files.',
@@ -474,9 +469,12 @@ def diff_features():
                         if not printed_header:
                             print('%s:' % step_num)
                             printed_header = True
-                        print('\t%s: %s [%g,%g] %s [%g,%g]' % (feature_name,arrow[0],
-                                                               feature_values[0,0],feature_values[0,1],arrow[1],
-                                                               feature_values[1,0],feature_values[1,1]))
+                        print('\t%s: %s [%g,%g (%.0f%%)] %s [%g,%g (%.0f%%)]' % (feature_name,arrow[0],
+                                                                                 feature_values[0,0],feature_values[0,1],
+                                                                                 np.abs(feature_values[0,1]/feature_values[0,0]*100),
+                                                                                 arrow[1],
+                                                                                 feature_values[1,0],feature_values[1,1],
+                                                                                 np.abs(feature_values[1,1]/feature_values[1,0]*100)))
 
     for this in range(2):
         other = (this+1)%2
@@ -488,13 +486,81 @@ def diff_features():
                     if not feature_name in features[other][step_num]['soma'].keys():
                         print('%s %s:%s' % (arrow[this],step_num,feature_name))
 
+
+############################################################
+###                         DUMP                         ###
+############################################################
+
+
+def dump_features():
+    parser = arg.ArgumentParser(description='Dump feature files into several CSV files.',
+                                prog=progname+' dump')
+    parser.add_argument('files', type=str, nargs='+', help='feature files')
+
+    args = parser.parse_args(args=sys.argv[2:])
+
+    for f in args.files:
+        if not os.path.isfile(f):
+            print('%s: %s: no such file.' % (progname,f))
+            sys.exit(1)
+
+    features = []
+    for f in args.files:
+        features.append(json.load(open(f,'r')))
+    labels = args.files
+    idx = np.argsort(map(len,labels))
+    labels = [labels[i] for i in idx]
+    features = [features[i] for i in idx]
+    nsteps = 3
+    for i in range(1,nsteps+1):
+        stepnum = 'Step%d' % i
+        fid = open(stepnum + '.csv','w')
+        fid.write('Feature,')
+        for lbl in labels:
+            fid.write('%s (mean),%s (std),' % (lbl.replace('_',' '),lbl.replace('_',' ')))
+        fid.write('\n')
+        for name in features[0][stepnum]['soma']:
+            fid.write('%s,' % name)
+            for feat in features:
+                try:
+                    values = feat[stepnum]['soma'][name]
+                except:
+                    values = [np.nan,np.nan]
+                fid.write('%g,%g,' % (values[0],values[1]))
+            fid.write('\n')
+        fid.close()
+
+
+############################################################
+###                         HELP                         ###
+############################################################
+
+
+def help():
+    if len(sys.argv) > 2 and sys.argv[2] in commands:
+        cmd = sys.argv[2]
+        sys.argv = [sys.argv[0], cmd, '-h']
+        commands[cmd]()
+    else:
+        print('Usage: %s <command> [<args>]' % progname)
+        print('')
+        print('Available commands are:')
+        print('   extract        Extract the features from a given cell.')
+        print('   write          Write a configuration file using data from multiple cells.')
+        print('   diff           Show differences between two feature files in a human way.')
+        print('   dump           Dump feature files into several CSV files.')
+        print('')
+        print('Type \'%s help <command>\' for help about a specific command.' % progname)
+
+
 ############################################################
 ###                         MAIN                         ###
 ############################################################
 
 
 # all the commands currently implemented
-commands = {'help': help, 'extract': extract_features, 'write': write_features, 'diff': diff_features}
+commands = {'help': help, 'extract': extract_features, 'write': write_features,
+            'diff': diff_features, 'dump': dump_features}
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):
