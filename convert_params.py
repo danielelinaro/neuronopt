@@ -8,13 +8,26 @@
 # Modified by Daniele Linaro (danielelinaro@gmail.com) in September 2017
 #
 
+import os
+import sys
 import json
+import argparse as arg
 
 def main():
     """Main"""
 
-    fixed_params = json.load(open('fixed_params.json','r'))
-    params = json.load(open('params.json','r'))
+    parser = arg.ArgumentParser(description='Convert params.json and fixed_params.json to parameters.json format',\
+                                prog=os.path.basename(sys.argv[0]))
+    parser.add_argument('--params', default='params.json', type=str,
+                        help='parameters file (default: params.json)')
+    parser.add_argument('--fixed-params', default='fixed_params.json', type=str,
+                        help='fixed parameters file (default: fixed_params.json)')
+    parser.add_argument('-o', '--output', default='parameters.json', type=str,
+                        help='output parameters file (default: parameters.json)')
+
+    args = parser.parse_args(args=sys.argv[1:])
+    fixed_params = json.load(open(args.fixed_params,'r'))
+    params = json.load(open(args.params,'r'))
 
     parameters = []
 
@@ -60,7 +73,7 @@ def main():
 
             parameters.append(param)
 
-    json.dump(parameters, open('parameters.json', 'w'),
+    json.dump(parameters, open(args.output, 'w'),
               indent=4,
               separators=(',', ': '))
 

@@ -168,6 +168,8 @@ def build():
     parser = arg.ArgumentParser(description='Use a converted morphology to build a cell in NEURON',
                                 prog=progname+' build')
     parser.add_argument('swc_file', type=str, action='store', help='SWC file')
+    parser.add_argument('--mech-file', default='mechanisms.json', type=str, help='mechanisms file (default: mechanisms.json')
+    parser.add_argument('--params-file', default='parameters.json', type=str, help='parameters file (default: parameters.json')
     parser.add_argument('-v','--verbose', action='store_true', help='Be verbose')
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -175,9 +177,17 @@ def build():
         print('%s: %s: no such file.' % (progname,args.swc_file))
         sys.exit(1)
 
-    output_file = args.swc_file.split('.swc')[0] + '.log'
+    if not os.path.isfile(args.mech_file):
+        print('%s: %s: no such file.' % (progname,args.mech_file))
+        sys.exit(1)
 
-    cell = cell_utils.Cell('CA3_cell',{'morphology':args.swc_file})
+    if not os.path.isfile(args.params_file):
+        print('%s: %s: no such file.' % (progname,args.params_file))
+        sys.exit(1)
+
+    cell = cell_utils.Cell('MyCell',{'morphology': args.swc_file,\
+                                     'mechanisms': args.mech_file, \
+                                     'parameters': args.params_file})
     cell.instantiate()
 
     regions = ('soma','axon','basal','apical')
@@ -192,13 +202,14 @@ def build():
             npoints[reg] += h.n3d(sec=sec)
             area = 0
             for seg in sec:
-                area += h.area(seg.x,sec)
+                area += h.area(seg.x,sec=sec)
             if args.verbose:
                 print(sec.name())
                 for i in range(int(h.n3d(sec=sec))):
-                    pt= np.array([h.x3d(i,sec=sec),h.y3d(i,sec=sec),h.z3d(i,sec=sec)])
+                    pt = np.array([h.x3d(i,sec=sec),h.y3d(i,sec=sec),h.z3d(i,sec=sec)])
                     print('   [%d] (%.2f,%.2f,%.2f)' % (i+1,pt[0],pt[1],pt[2]))
                 print('      L = %.2f um.' % sec.L)
+                print('   diam = %.2f um.' % sec.diam)
                 print('   area = %.2f um2.' % area)
             lengths[reg] += sec.L
             areas[reg] += area

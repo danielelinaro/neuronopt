@@ -34,11 +34,16 @@ feature_names = {'BBP': ['AP_height', 'AHP_slow_time', 'ISI_CV',
                          'doublet_ISI','AHP_depth_abs_slow',
                          'AP_width','time_to_first_spike','AHP_depth_abs',
                          'adaptation_index2','mean_frequency'],
-                 'RS': ['AP_amplitude','AP_begin_voltage','spike_half_width',
-                        'time_to_first_spike','adaptation_index2',
-                        'ISI_values','ISI_CV','doublet_ISI',
-                        'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
-                        'Spikecount','fast_AHP','AP_fall_rate','AP_rise_rate'],
+                 'RS-01': ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                           'time_to_first_spike','adaptation_index2',
+                           'ISI_values','ISI_CV','doublet_ISI',
+                           'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
+                           'Spikecount','fast_AHP','AP_fall_rate','AP_rise_rate'],
+                 'RS-02': ['AP_height','AP_begin_voltage','spike_half_width',
+                           'time_to_first_spike','adaptation_index2',
+                           'ISI_values','ISI_CV','doublet_ISI',
+                           'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
+                           'fast_AHP','AP_fall_rate','AP_rise_rate','mean_frequency'],
                  'B-01': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                           'time_to_first_spike','doublet_ISI',
                           'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
@@ -66,7 +71,7 @@ def write_features():
                         help='pkl files containing the data relative to each cell')
     parser.add_argument('-N', '--nsteps', default=3, type=int,
                         help='number of current steps to include in the protocols (default: 3)')
-    parser.add_argument('--step-amps', default=str, type=str,
+    parser.add_argument('--step-amps', type=str,
                         help='current amplitudes to include in the protocols, in alternative to the --nsteps option')
     parser.add_argument('--round-amp', default=0.025, type=float,
                         help='the current amplitudes will be rounded to the closest integer multiple of this quantity (default: 0.025 nA)')
@@ -89,7 +94,7 @@ def write_features():
     nsteps = args.nsteps
     desired_amps = None
 
-    if args.step_amps != '':
+    if not args.step_amps is None:
         desired_amps = map(float,args.step_amps.split(','))
         nsteps = len(desired_amps)
 
@@ -253,13 +258,13 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
     voltage_range = [np.min(voltage),np.max(voltage)]
     recording_dur = time[-1]
 
-    if voltage_range[0] > -100 and (voltage_range[1] > 0 and voltage_range[1] < 100):
+    if voltage_range[0] > -100 and (voltage_range[1] > efel.Settings().threshold and voltage_range[1] < 100):
         plt.plot(time,voltage.T,lw=1)
 
     return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
 
 
-def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,sampling_rate=20,files_out=[]):
+def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,sampling_rate=20,files_out=[],quiet=False):
     if type(files_out) != list:
         files_out = [files_out]
     if len(files_out) == 1:
@@ -268,8 +273,14 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         offset = 0
         for i,f in enumerate(files_in):
             feat,voltage_range,_ = extract_features_from_file(f,stim_dur,stim_start,sampling_rate)
-            jdx, = np.where([not all(v is None for v in fe.values()) for fe in feat])
-            if voltage_range[0] > -100 and (voltage_range[1] > 0 and voltage_range[1] < 100):
+            try:
+                # Spikecount feature is present
+                jdx, = np.where([fe['Spikecount'][0] for fe in feat])
+            except:
+                # Spikecount feature is absent
+                jdx, = np.where([not all(v is None or len(v) == 0 for v in fe.values()) for fe in feat])
+            if voltage_range[0] > -100 and (voltage_range[1] > efel.Settings().threshold
+                                            and voltage_range[1] < 100):
                 for j in jdx:
                     features.append(feat[j])
                     with_spikes.append(offset + j)
@@ -290,16 +301,17 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
             feat,_ = extract_features_from_file(f_in)
             pickle.dump(feat,open(f_out,'w'))
 
-    print('-------------------------------------------------------')
-    for feat,amp in zip(features,amplitudes):
-        print('>>> Amplitude: %g nA' % amp)
-        for name,values in feat.items():
-            try:
-                print('%s has the following values: %s' % \
-                      (name, ', '.join([str(x) for x in values])))
-            except:
-                print('{} has the following values: \033[91m'.format(name) + str(values) + '\033[0m')
+    if not quiet:
         print('-------------------------------------------------------')
+        for feat,amp in zip(features,amplitudes):
+            print('>>> Amplitude: %g nA' % amp)
+            for name,values in feat.items():
+                try:
+                    print('%s has the following values: %s' % \
+                          (name, ', '.join([str(x) for x in values])))
+                except:
+                    print('{} has the following values: \033[91m'.format(name) + str(values) + '\033[0m')
+            print('-------------------------------------------------------')
 
 
 def read_tab_delim_file(filename):
@@ -339,11 +351,14 @@ def extract_features():
     parser.add_argument('--stim-dur', default=500., type=float,
                         help='Stimulus duration (default 500 ms)')
     parser.add_argument('--stim-start', default=125., type=float,
-                        help='Beginning of the stimulus (default 125 ms)')
+                        help='beginning of the stimulus (default 125 ms)')
     parser.add_argument('--Imin', default=None, type=float,
-                        help='Minimum injected current, in nA')
+                        help='minimum injected current, in nA')
     parser.add_argument('--Istep', default=0.1, type=float,
-                        help='Current step (default 0.1 nA)')
+                        help='current step (default 0.1 nA)')
+    parser.add_argument('--spike-threshold', default=0., type=float,
+                        help='spike threshold (default 0 mV)')
+    parser.add_argument('--quiet', action='store_true', help='be quiet')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -428,16 +443,19 @@ def extract_features():
             else:
                 kernel_file = file.split('.h5')[0] + '_kernel.dat'
 
+    efel.setThreshold(args.spike_threshold)
+
     if mode == 'LCG':
         extract_features_from_LCG_files(files_in, kernel_file, folder+'/'+file_out)
     else:
         extract_features_from_files(files_in,current_amplitudes,args.stim_dur,args.stim_start,
-                                    args.sampling_rate,files_out=[folder+'/'+file_out])
+                                    args.sampling_rate,files_out=[folder+'/'+file_out],quiet=args.quiet)
 
     plt.xlabel('Time (ms)')
     plt.ylabel('Voltage (mV)')
     plt.savefig(folder+'/'+file_out.split('.pkl')[0]+'.pdf',dpi=300)
-    plt.show()
+    if not args.quiet:
+        plt.show()
 
 
 ############################################################

@@ -104,10 +104,10 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
             plt.ylabel(r'$V_m$ (mV)')
             plt.xlabel('Time (ms)')
 
-    no_spikes = map(lambda x: x.shape[0]/dur*1e3, spike_times)
-    f = map(lambda x: len(np.where(x > delay+tran)[0])/(dur-tran)*1e3, spike_times)
-    inverse_first_isi = [1e3/np.diff(t[:2]) if len(t) > 1 else 0 for t in spike_times]
-    inverse_last_isi = [1e3/np.diff(t[-2:]) if len(t) > 1 else 0 for t in spike_times]
+    no_spikes = np.array(map(lambda x: x.shape[0]/dur*1e3, spike_times))
+    f = np.array(map(lambda x: len(np.where(x > delay+tran)[0])/(dur-tran)*1e3, spike_times))
+    inverse_first_isi = np.array([1e3/np.diff(t[:2]) if len(t) > 1 else 0 for t in spike_times])
+    inverse_last_isi = np.array([1e3/np.diff(t[-2:]) if len(t) > 1 else 0 for t in spike_times])
 
     if do_plot:
         plt.figure()
@@ -126,14 +126,17 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
 def main():
     parser = arg.ArgumentParser(description='Compute the f-I curve of a neuron model.')
     parser.add_argument('I', type=str, action='store', help='current values in pA, either comma separated or interval and steps, as in 100:300:50')
-    parser.add_argument('-p','--params-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-m','--mech-file', type=str, help='JSON file containing the mechanisms to be inserted into the cell', required=True)
-    parser.add_argument('--hall-of-fame', action='store_true', help='Compute population f-I curve')
+    parser.add_argument('-p','--params-file', type=str, help='JSON file containing the parameters of the model')
+    parser.add_argument('--hall-of-fame', action='store_true', help='compute population f-I curve')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
     parser.add_argument('--tran', default=200., type=float, help='transient to be discard after stimulation onset (default: 200 ms)')
     args = parser.parse_args(args=sys.argv[1:])
+
+    if args.hall_of_fame and not args.params_file is None:
+        print('--hall-of-fame option has precedence over -p: ignoring parameters file %s.' % args.params_file)
 
     try:
         I = np.array([float(args.I)])
@@ -150,11 +153,20 @@ def main():
     if not args.hall_of_fame:
         f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, args.mech_file, \
                                                                           args.params_file, args.delay, args.dur, \
-                                                                          args.tran, args.cell_name, do_plot=True)
+                                                                          args.tran, 'MyCell', do_plot=True)
+        suffix = args.params_file.split('.')[0]
     else:
         f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve_hall_of_fame(I*1e-3, args.swc_file, args.mech_file, \
                                                                                        delay=args.delay, dur=args.dur, \
                                                                                        tran=args.tran)
+        suffix = 'hall_of_fame'
+
+    fI_curve = {'I': I, 'f': f,
+                'no_spikes': no_spikes,
+                'inverse_first_isi': inverse_first_isi,
+                'inverse_last_isi': inverse_last_isi}
+
+    pickle.dump(fI_curve, open('fI_curve_'+suffix+'.pkl','w'))
 
 
 if __name__ == '__main__':

@@ -15,7 +15,6 @@ def compute_section_area(section):
         a += h.area(segment.x, sec=section)
     return a
 
-
 def distance(origin, end, x=0.5):
     h.distance(sec=origin)
     return h.distance(x, sec=end)
@@ -196,7 +195,7 @@ class Cell (object):
         self.total_area = 0
         for sec in self.morpho.all:
             for seg in sec:
-                self.total_area += h.area(seg.x, sec)
+                self.total_area += h.area(seg.x, sec=sec)
         if DEBUG:
             print('Total area: %.0f um^2.' % self.total_area)
 
