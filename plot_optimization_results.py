@@ -36,12 +36,14 @@ def load_files():
 
 
 def write_optimal_parameters(parameters,hall_of_fame,evaluator):
-    optimal_individual = evaluator.param_dict(hall_of_fame[0])
-    for par in parameters:
-        if 'value' not in par:
-            par['value'] = optimal_individual[par['param_name'] + '.' + par['sectionlist']]
-            par.pop('bounds')
-    json.dump(parameters,open('optimal_parameters.json','w'),indent=4)
+    for i,individual in enumerate(hall_of_fame):
+        param_dict = evaluator.param_dict(individual)
+        parameters_copy = [p.copy() for p in parameters]
+        for par in parameters_copy:
+            if 'value' not in par:
+                par['value'] = param_dict[par['param_name'] + '.' + par['sectionlist']]
+                par.pop('bounds')
+        json.dump(parameters_copy,open('individual_%d.json'%i,'w'),indent=4)
 
 
 def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0):
@@ -351,8 +353,6 @@ def main():
             plot_summary(features,hall_of_fame,final_pop,evaluator,responses,individual)
     else:
         plot_summary(features,hall_of_fame,final_pop,evaluator,responses,individual=0)
-    # swc_file = glob.glob('*.swc')[0]
-    # simulate_optimal_model(swc_file)
     
 
 if __name__ == '__main__':
