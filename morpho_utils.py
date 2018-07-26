@@ -37,7 +37,7 @@ def convert():
     
     f_in = args.swc_file
     if args.output is None:
-        f_out = f_in.split('.swc')[0] + '.converted.swc'
+        f_out = ''.join(f_in.split('.swc')[:-1]) + '.converted.swc'
     else:
         f_out = args.output
 

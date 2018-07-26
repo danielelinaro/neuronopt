@@ -2,6 +2,7 @@
 
 import os
 import sys
+import argparse as arg
 import json
 import efel
 import glob
@@ -46,7 +47,7 @@ def write_optimal_parameters(parameters,hall_of_fame,evaluator):
         json.dump(parameters_copy,open('individual_%d.json'%i,'w'),indent=4)
 
 
-def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0):
+def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0,dump=False):
     pop_size = len(final_pop)
     n_params = len(evaluator.param_names)
 
@@ -81,6 +82,18 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
                   (name,feature_values[name][0],np.abs(values[0]-feature_values[name][0])/values[1],
                    values[0],values[1],values[1]/np.abs(values[0])))
 
+    if dump:
+        fid = open('%s_individual_%d_errors.csv'%(os.path.basename(os.path.abspath('.')),individual),'w')
+        for k in features_std_units['Step3']:
+            fid.write('%s,' % k)
+            for i in range(1,3):
+                try:
+                    fid.write('%f,' % features_std_units['Step%d'%i][k])
+                except:
+                    fid.write(',')
+            fid.write('%f\n' % features_std_units['Step3'][k])
+        fid.close()
+
     nsteps = len(responses[individual].keys())
 
     plt.figure()
@@ -90,6 +103,8 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     after = 200
     dx = 100
     dy = 50
+    if dump:
+        fid = open('%s_individual_%d_traces.csv'%(os.path.basename(os.path.abspath('.')),individual),'w')
     for resp in responses[individual].values():
         # this is because of the variable time-step integration
         start = np.where(resp['time'] > stim_start-before)[0][0] - 1
@@ -98,7 +113,16 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
         plt.plot(resp['time'][idx],resp['voltage'][idx]+offset,'k',lw=1)
         old_offset = offset
         offset += np.diff([np.min(resp['voltage']),np.max(resp['voltage'])])[0] + 5
-
+        if dump:
+            for v in resp['time'][idx]:
+                fid.write('%f,' % (v-resp['time'][idx[0]]))
+            fid.write('\n')
+            for v in resp['voltage'][idx]:
+                fid.write('%f,' % v)
+            fid.write('\n')
+    if dump:
+        fid.close()
+    
     plt.plot(stim_start-before+100+np.zeros(2),old_offset-dy/2+np.array([0,dy]),'k',linewidth=1)
     plt.plot(stim_start-before+100+np.array([0,dx]),old_offset-dy/2+np.zeros(2),'k',linewidth=1)
     plt.text(stim_start-before+100+dx/2,old_offset-dy/2*1.3,'%d ms'%dx,fontsize=8,
@@ -169,190 +193,26 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     plt.ylim([-1,n_params])
     plt.yticks(np.arange(n_params),param_names,fontsize=6)
     plt.savefig(outfile)
-    plt.show()
-
-
-def define_mechanisms():
-    """Define mechanisms"""
-
-    mech_definitions = json.load(open('mechanisms.json','r'))
-
-    mechanisms = []
-    for sectionlist, channels in mech_definitions.items():
-        seclist_loc = ephys.locations.NrnSeclistLocation(
-            sectionlist,
-            seclist_name=sectionlist)
-        for channel in channels:
-            mechanisms.append(ephys.mechanisms.NrnMODMechanism(
-                name='%s.%s' % (channel, sectionlist),
-                mod_path=None,
-                suffix=channel,
-                locations=[seclist_loc],
-                preloaded=True))
-
-    return mechanisms
-
-
-def define_parameters():
-    """Define parameters"""
-
-    param_configs = json.load(open('optimal_parameters.json','r'))
-    parameters = []
-
-    for param_config in param_configs:
-        if 'value' in param_config:
-            frozen = True
-            value = param_config['value']
-            bounds = None
-        elif 'bounds' in param_config:
-            frozen = False
-            bounds = param_config['bounds']
-            value = None
-        else:
-            raise Exception(
-                'Parameter config has to have bounds or value: %s'
-                % param_config)
-
-        if param_config['type'] == 'global':
-            parameters.append(
-                ephys.parameters.NrnGlobalParameter(
-                    name=param_config['param_name'],
-                    param_name=param_config['param_name'],
-                    frozen=frozen,
-                    bounds=bounds,
-                    value=value))
-        elif param_config['type'] in ['section', 'range']:
-            if param_config['dist_type'] == 'uniform':
-                scaler = ephys.parameterscalers.NrnSegmentLinearScaler()
-            elif param_config['dist_type'] == 'exp':
-                scaler = ephys.parameterscalers.NrnSegmentSomaDistanceScaler(
-                    distribution=param_config['dist'])
-            seclist_loc = ephys.locations.NrnSeclistLocation(
-                param_config['sectionlist'],
-                seclist_name=param_config['sectionlist'])
-
-            name = '%s.%s' % (param_config['param_name'],
-                              param_config['sectionlist'])
-
-            if param_config['type'] == 'section':
-                parameters.append(
-                    ephys.parameters.NrnSectionParameter(
-                        name=name,
-                        param_name=param_config['param_name'],
-                        value_scaler=scaler,
-                        value=value,
-                        frozen=frozen,
-                        bounds=bounds,
-                        locations=[seclist_loc]))
-            elif param_config['type'] == 'range':
-                parameters.append(
-                    ephys.parameters.NrnRangeParameter(
-                        name=name,
-                        param_name=param_config['param_name'],
-                        value_scaler=scaler,
-                        value=value,
-                        frozen=frozen,
-                        bounds=bounds,
-                        locations=[seclist_loc]))
-        else:
-            raise Exception(
-                'Param config type has to be global, section or range: %s' %
-                param_config)
-
-    return parameters
-
-
-def define_morphology(swc_filename):
-    """Define morphology"""
-
-    return ephys.morphologies.NrnFileMorphology(swc_filename,do_replace_axon=False,do_set_nseg=True)
-
-
-def simulate_optimal_model(swc_file):
-    """Simulate cell model"""
-
-    cells = []
-
-    amp = 0.3
-    delay = 125.
-    dur = 500.
-
-    cell = ephys.models.CellModel(
-        'CA3',
-        morph=define_morphology(swc_file),
-        mechs=define_mechanisms(),
-        params=define_parameters())
-    cells.append(cell)
-
-    soma_loc = ephys.locations.NrnSeclistCompLocation(name='soma',seclist_name='somatic',sec_index=0,comp_x=0.5)
-
-    stim = ephys.stimuli.NrnSquarePulse(step_amplitude=amp,step_delay=delay,step_duration=dur,
-                                        location=soma_loc,total_duration=dur+2*delay)
-    rec = ephys.recordings.CompRecording(name='step.soma.v',location=soma_loc,variable='v')
-    step_protocols = ephys.protocols.SequenceProtocol('step', protocols=[ephys.protocols.SweepProtocol('step', [stim], [rec])])
-
-    nrn = ephys.simulators.NrnSimulator()
-    
-    #### let's simulate the optimal protocol
-    responses = step_protocols.run(cell_model=cell, param_values={}, sim=nrn)
-
-    t = np.array(responses['step.soma.v']['time'])
-    V = np.array(responses['step.soma.v']['voltage'])
-
-    #### load the saved data
-    hof_responses = pickle.load(open('hall_of_fame_responses.pkl','r'))
-    hof_t = hof_responses[0]['Step3.soma.v']['time']
-    hof_V = hof_responses[0]['Step3.soma.v']['voltage']
-
-    import cell_utils
-    cell = cell_utils.Cell('CA3_cell',{'morphology': swc_file,
-                                       'mechanisms': 'mechanisms.json',
-                                       'parameters': 'optimal_parameters.json'}, h)
-    cell.instantiate()
-    cells.append(cell)
-
-    cclamp = h.IClamp(cell.morpho.soma[0](0.5))
-    cclamp.amp = amp
-    cclamp.delay = delay
-    cclamp.dur = dur
-
-    recorders = {'t': h.Vector(), 'v': h.Vector()}
-    recorders['t'].record(h._ref_t)
-    recorders['v'].record(cell.morpho.soma[0](0.5)._ref_v)
-
-    if h.cvode_active():
-        print('CVode is active. minstep = %g ms. reltol = %g, abstol = %g. celsius = %g C.' % \
-              (nrn.neuron.h.cvode.minstep(),nrn.neuron.h.cvode.rtol(),nrn.neuron.h.cvode.atol(),nrn.neuron.h.celsius))
-    else:
-        print('CVode is not active.')
-
-    #h.cvode_active(1)
-    #h.cvode.rtol(1e-6)
-    #h.cvode.atol(1e-3)
-    h.celsius = 36
-    h.tstop = dur + 2*delay
-    h.t = 0
-    h.run()
-
-    #### let's plot the results
-    plt.figure()
-    plt.plot(t,V,'k',label='BPO simulation')
-    plt.plot(hof_t,hof_V,'b',label='BPO optimization')
-    plt.plot(recorders['t'],recorders['v'],'r',label='My simulation')
-    plt.xlabel('Time (ms)')
-    plt.ylabel(r'$V_m$ (mV)')
-    plt.legend(loc='best')
-    plt.show()
+    #plt.show()
 
 
 def main():
+    parser = arg.ArgumentParser(description='Plot results of the optimization.', prog=os.path.basename(sys.argv[0]))
+    parser.add_argument('individuals', type=int, action='store', nargs='*', default=[0], help='individuals to plot')
+    parser.add_argument('-a', '--all', action='store_true', help='plot all individuals')
+    parser.add_argument('-d', '--dump', action='store_true', help='dump traces and error values')
+    args = parser.parse_args(args=sys.argv[1:])
+
     parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses = load_files()
     write_optimal_parameters(parameters,hall_of_fame,evaluator)
-    if len(sys.argv) == 2 and sys.argv[1] == '--all':
-        for individual in range(len(responses)):
-            plot_summary(features,hall_of_fame,final_pop,evaluator,responses,individual)
+
+    if args.all:
+        individuals = range(len(responses))
     else:
-        plot_summary(features,hall_of_fame,final_pop,evaluator,responses,individual=0)
+        individuals = args.individuals
+
+    for ind in individuals:
+        plot_summary(features,hall_of_fame,final_pop,evaluator,responses,ind,args.dump)
     
 
 if __name__ == '__main__':

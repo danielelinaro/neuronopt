@@ -25,6 +25,7 @@ def compute_fI_curve_hall_of_fame(I, swc_file, mech_file, hof_file='hall_of_fame
                                   delay=500., dur=2000., tran=200.):
     hall_of_fame = pickle.load(open(hof_file,'r'))
     evaluator = pickle.load(open(evaluator_file,'r'))
+    parameters_files = []
     for i,individual in enumerate(hall_of_fame):
         parameters = json.load(open(parameters_file,'r'))
         param_dict = evaluator.param_dict(individual)
@@ -35,10 +36,12 @@ def compute_fI_curve_hall_of_fame(I, swc_file, mech_file, hof_file='hall_of_fame
         params_file = 'individual_%d.json' % i
         json.dump(parameters,open(params_file,'w'),indent=4)
         parameters_files.append(params_file)
-    return compute_fI_curves(I, swc_file, mech_file, parameters_files, delay, dur, tran)
+    return compute_fI_curves(I, swc_file, mech_file, parameters_files, delay, dur, tran, 'hall_of_fame')
 
 
-def compute_fI_curves(I, swc_file, mech_file, parameters_files, delay=500., dur=2000., tran=200.):
+def compute_fI_curves(I, swc_file, mech_file, parameters_files, delay=500., dur=2000., tran=200., suffix=None):
+    if suffix is None:
+        suffix = make_suffix(parameters_files)
     N = len(parameters_files)
     f = np.zeros((N,len(I)))
     no_spikes = np.zeros((N,len(I)))
@@ -56,7 +59,7 @@ def compute_fI_curves(I, swc_file, mech_file, parameters_files, delay=500., dur=
     plt.xlabel('Current (nA)')
     plt.ylabel(r'$f$ (spikes/s)')
     plt.legend(loc='best')
-    plt.savefig('fI_curve_%s.pdf' % make_suffix(parameters_files))
+    plt.savefig('fI_curve_%s.pdf' % suffix)
     plt.show()
 
     return f,no_spikes,inverse_first_isi,inverse_last_isi
@@ -83,7 +86,10 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
             recorders[lbl] = h.Vector()
         recorders['t'].record(h._ref_t)
         recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
-        recorders['Vaxon'].record(cell.morpho.axon[4](0.5)._ref_v)
+        try:
+            recorders['Vaxon'].record(cell.morpho.axon[4](0.5)._ref_v)
+        except:
+            print('No axon?')
         for sec,dst in zip(cell.morpho.apic,cell.apical_path_lengths):
             if dst[0] >= 100:
                 recorders['Vapic'].record(sec(0.5)._ref_v)
@@ -107,7 +113,10 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
         if do_plot and len(I) == 1:
             plt.figure()
             t = np.array(recorders['t'])
-            plt.plot(t,recorders['Vaxon'],'r',label='Axon')
+            try:
+                plt.plot(t,recorders['Vaxon'],'r',label='Axon')
+            except:
+                pass
             plt.plot(t,recorders['Vbasal'],'g',label='Basal')
             plt.plot(t,recorders['Vapic'],'b',label='Apical')
             plt.plot(t,recorders['Vsoma'],'k',label='Soma')
@@ -139,7 +148,7 @@ def main():
     parser = arg.ArgumentParser(description='Compute the f-I curve of a neuron model.')
     parser.add_argument('I', type=str, action='store', help='current values in pA, either comma separated or interval and steps, as in 100:300:50')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-m','--mech-file', type=str, help='JSON file containing the mechanisms to be inserted into the cell', required=True)
+    parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
     parser.add_argument('-p','--params-files', type=str, help='JSON file(s) containing the parameters of the model (comma separated)')
     parser.add_argument('--hall-of-fame', action='store_true', help='compute population f-I curve')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
@@ -149,7 +158,7 @@ def main():
 
     if args.hall_of_fame and not args.params_files is None:
         print('--hall-of-fame option has precedence over -p: ignoring parameters files %s.' % args.params_files)
-    elif not args.hall_of_fame is None:
+    elif not args.hall_of_fame:
         params_files = args.params_files.split(',')
 
     try:
@@ -175,9 +184,9 @@ def main():
         suffix = make_suffix(params_files)
     else:
         f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, args.mech_file, \
-                                                                          params_files[0], args.delay, args.dur, \
+                                                                          params_files, args.delay, args.dur, \
                                                                           args.tran, 'MyCell', do_plot=True)
-        suffix = args.params_file.split('.')[0]
+        suffix = args.params_files.split('.')[0]
 
     fI_curve = {'I': I, 'f': f,
                 'no_spikes': no_spikes,
