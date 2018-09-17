@@ -200,47 +200,44 @@ class Cell (object):
             print('Total area: %.0f um^2.' % self.total_area)
 
 
-    def distance_from_soma(self, sec, x=0.5):
-        return distance(self.morpho.soma[0], sec, x)
-
+    def distance_from_soma(self, sec, x=None):
+        if x is not None:
+            return distance(self.morpho.soma[0], sec, x)
+        dst = []
+        for seg in sec:
+            dst.append(distance(self.morpho.soma[0], sec, seg.x))
+        return dst
 
     def compute_measures(self):
-        # the areas of all sections in the soma
-        self.soma_areas = []
-        for sec in self.morpho.somatic:
-            self.soma_areas.append(compute_section_area(sec))
-
-        # the areas of all sections in the apical dendrite
-        self.apical_areas = []
-        # the distances of all apical sections from the soma: here the
-        # distance is just the Euclidean one, not the path length
-        self.apical_distances = []
-        for sec in self.morpho.apical:
-            self.apical_distances.append(self.distance_from_soma(sec))
-            self.apical_areas.append(compute_section_area(sec))
-
-        # the areas of all sections in the basal dendrites
-        self.basal_areas = []
-        # the distances of all basal sections from the soma
-        self.basal_distances = []
-        for sec in self.morpho.basal:
-            self.basal_distances.append(self.distance_from_soma(sec))
-            self.basal_areas.append(compute_section_area(sec))
-
-        self.total_area = np.sum(self.soma_areas) + np.sum(self.apical_areas) + np.sum(self.basal_areas)
-
+        self.total_nseg = 0.
+        self.total_area = 0.
+        self.all_segments = []
+        self.somatic_segments = []
+        self.apical_segments = []
+        self.basal_segments = []
         if self.has_axon:
-            # the areas of the sections in the axon
-            self.axon_areas = []
-            # the path length of each section in the axon from the root
-            self.axon_lengths = []
-            for sec in self.morpho.axonal:
-                self.axon_areas.append(compute_section_area(sec))
-                # here we are assuming that the axon extends vertically from the soma,
-                # in which case distance and path length are the same. if this is not the
-                # case, the subclass should override this method and implement its own code
-                self.axon_lengths.append(self.distance_from_soma(sec))
-            self.total_area += np.sum(self.axon_areas)
+            self.axonal_segments = []
+        for sec in self.morpho.all:
+            self.total_nseg += sec.nseg
+            for seg in sec:
+                segment = {'seg': seg, 'sec': sec, \
+                           'area': h.area(seg.x,sec), \
+                           'dst': self.distance_from_soma(sec,seg.x)}
+                self.total_area += segment['area']
+                self.all_segments.append(segment)
+                if sec in self.morpho.soma:
+                    self.somatic_segments.append(segment)
+                elif sec in self.morpho.apic:
+                    self.apical_segments.append(segment)
+                elif sec in self.morpho.dend:
+                    self.basal_segments.append(segment)
+                elif sec in self.morpho.axon:
+                    self.axonal_segments.append(segment)
+        if DEBUG:
+            print('Total area: %.0f um2.' % self.total_area)
+            print('Total number of segments: %d (%d somatic, %d apical, %d basal and %d axonal.' % \
+                      (self.total_nseg,len(self.somatic_segments),len(self.apical_segments),\
+                           len(self.basal_segments),len(self.axonal_segments)))
 
 
     def compute_path_lengths(self):
