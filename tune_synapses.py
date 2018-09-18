@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import sys
 import time
 import glob
@@ -12,6 +13,9 @@ from scipy.optimize import curve_fit
 from neuron import h
 import cell_utils as cu
 import synapse_utils as su
+
+# the name of this script
+progname = os.path.basename(sys.argv[0])
 
 # definitions of normal and log-normal distribution, for the fit and plot
 normal = lambda x,m,s: 1./(np.sqrt(2*np.pi*s**2)) * np.exp(-(x-m)**2/(2*s**2))
@@ -96,7 +100,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
     sys.stdout.write('%02d/%02d %02d:%02d:%02d >> ' % (now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec))
     sys.stdout.flush()
     h.cvode_active(1)
-    h.tstop = tend/10
+    h.tstop = tend
     h.run()
     sys.stdout.write('elapsed time: %d seconds.\n' % (time.time()-start))
 
@@ -124,9 +128,9 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
         p0 = [np.mean(np.log(EPSP_amplitudes)),np.std(np.log(EPSP_amplitudes))]
         popt,pcov = curve_fit(lognormal,x,hist,p0)
 
-    # save everything and make a plot
+    # save everything
     now = time.localtime(time.time())
-    filename = 'EPSP_amplitudes_mu=%.1f_sigma=%.1f_%d%02d%02d_%02d%02d%02d' % \
+    filename = 'EPSP_amplitudes_mu=%.3f_sigma=%.3f_%d%02d%02d_%02d%02d%02d' % \
                (mu,sigma,now.tm_year,now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec)
 
     data = {'EPSP_amplitudes': EPSP_amplitudes, 'swc_file': swc_file, 'mech_file': mech_file, \
@@ -135,20 +139,12 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
             'edges': edges, 'popt': popt}
     pickle.dump(data,open(filename+'.pkl','w'))
 
-    if do_plot:
-        plt.figure(figsize=(6,5))
-        plt.bar(x,hist,width=binwidth)
-        if distr_name == 'normal':
-            plt.plot(edges,normal(edges,popt[0],popt[1]),'r',lw=2)
-        else:
-            plt.plot(edges,lognormal(edges,popt[0],popt[1]),'r',lw=2)
-        plt.xlabel('EPSP amplitude (mV)')
-        plt.ylabel('PDF')
-        plt.title('mu,sigma = %g,%g' % (mu,sigma))
-        plt.savefig(filename+'.pdf')
 
+############################################################
+###                       SIMULATE                       ###
+############################################################
 
-def main():
+def simulate():
     parser = arg.ArgumentParser(description='Simulate synaptic activation in a neuron model.')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
@@ -160,7 +156,7 @@ def main():
     parser.add_argument('--scaling', default=1., type=float, help='AMPA/NMDA scaling')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     
-    args = parser.parse_args(args=sys.argv[1:])
+    args = parser.parse_args(args=sys.argv[2:])
 
     if args.mean is None:
         raise 'You must specify the mean of the distribution of synaptic weights'
@@ -182,6 +178,80 @@ def main():
     
     simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file, args.distr, \
                                  args.mean, args.std, args.scaling, args.reps, do_plot=args.plot)
+
+
+############################################################
+###                         PLOT                         ###
+############################################################
+
+def plot():
+    parser = arg.ArgumentParser(description='Plot a converted morphology',
+                                prog=progname+' plot')
+    parser.add_argument('pkl_file', type=str, action='store', help='Data file')
+    parser.add_argument('-o', '--output', default=None, type=str, help='output file name')
+
+    args = parser.parse_args(args=sys.argv[2:])
+
+    f_in = args.pkl_file
+    if not os.path.isfile(f_in):
+        print('%s: %s: no such file.' % (progname,f_in))
+        sys.exit(0)
+
+    data = pickle.load(open(f_in,'r'))
+
+    if args.output is None:
+        f_out = f_in.split('.pkl')[0] + '.pdf'
+    else:
+        f_out = args.output
+
+    x = data['edges'][:-1] + data['binwidth']/2
+    plt.figure(figsize=(6,5))
+    plt.bar(x,data['hist'],width=data['binwidth'])
+    if data['distr_name'] == 'normal':
+        plt.plot(data['edges'],normal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
+    else:
+        plt.plot(data['edges'],lognormal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
+    plt.xlabel('EPSP amplitude (mV)')
+    plt.ylabel('PDF')
+    plt.title('mu,sigma = %g,%g' % (data['mu'],data['sigma']))
+    plt.xlim([0,4])
+    plt.savefig(f_out)
+
+
+############################################################
+###                         HELP                         ###
+############################################################
+
+def help():
+    if len(sys.argv) > 2 and sys.argv[2] in commands:
+        cmd = sys.argv[2]
+        sys.argv = [sys.argv[0], cmd, '-h']
+        commands[cmd]()
+    else:
+        print('Usage: %s <command> [<args>]' % progname)
+        print('')
+        print('Available commands are:')
+        print('   simulate       Simulate synaptic activation')
+        print('   plot           Plot the results')
+        print('')
+        print('Type \'%s help <command>\' for help about a specific command.' % progname)
+
+
+############################################################
+###                         MAIN                         ###
+############################################################
+
+# all the commands currently implemented
+commands = {'help': help, 'simulate': simulate, 'plot': plot}
+
+def main():
+    if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):
+        commands['help']()
+        sys.exit(0)
+    if not sys.argv[1] in commands:
+        print('%s: %s is not a recognized command. See \'%s --help\'.' % (progname,sys.argv[1],progname))
+        sys.exit(1)
+    commands[sys.argv[1]]()
 
 
 if __name__ == '__main__':
