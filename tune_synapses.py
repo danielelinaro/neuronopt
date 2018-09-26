@@ -65,7 +65,7 @@ def build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, mu, s
     return cell,synapses
 
 
-def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, reps, do_plot=True):
+def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, reps, output_folder='.', do_plot=True):
     """
     Instantiates reps cells and simulates them while recording the membrane potential. EPSPs are then extracted and their
     distribution is computed and fit with an appropriate distribution. Also saves the results to disk.
@@ -115,6 +115,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
     print('Mean EPSP amplitude: %g mV.' % np.mean(EPSP_amplitudes))
 
     # compute the EPSPs amplitudes histogram
+    EPSP_amplitudes = EPSP_amplitudes[EPSP_amplitudes < 20]
     nbins = 100
     hist,edges = np.histogram(EPSP_amplitudes,nbins,density=True)
     binwidth = np.diff(edges[:2])[0]
@@ -137,7 +138,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
             'params_file': params_file, 'distr_name': distr_name, 'mu': mu, 'sigma': sigma, \
             'scaling': scaling, 'slm_border': slm_border, 'hist': hist, 'binwidth': binwidth, \
             'edges': edges, 'popt': popt}
-    pickle.dump(data,open(filename+'.pkl','w'))
+    pickle.dump(data,open(output_folder + '/' + filename + '.pkl','w'))
 
 
 ############################################################
@@ -155,6 +156,7 @@ def simulate():
     parser.add_argument('--reps', default=10, type=int, help='number of repetitions')
     parser.add_argument('--scaling', default=1., type=float, help='AMPA/NMDA scaling')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
+    parser.add_argument('--output-dir', default='.', type=str, help='output folder')
     
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -177,7 +179,7 @@ def simulate():
         raise 'The number of repetitions must be positive'
     
     simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file, args.distr, \
-                                 args.mean, args.std, args.scaling, args.reps, do_plot=args.plot)
+                                 args.mean, args.std, args.scaling, args.reps, args.output_folder, do_plot=args.plot)
 
 
 ############################################################
@@ -185,7 +187,7 @@ def simulate():
 ############################################################
 
 def plot():
-    parser = arg.ArgumentParser(description='Plot a converted morphology',
+    parser = arg.ArgumentParser(description='Plot the results of the simulation',
                                 prog=progname+' plot')
     parser.add_argument('pkl_file', type=str, action='store', help='Data file')
     parser.add_argument('-o', '--output', default=None, type=str, help='output file name')
@@ -198,6 +200,21 @@ def plot():
         sys.exit(0)
 
     data = pickle.load(open(f_in,'r'))
+
+    fix = False
+    if fix:
+        nbins = 100
+        data['EPSP_amplitudes'] = data['EPSP_amplitudes'][data['EPSP_amplitudes'] < 10]
+        data['hist'],data['edges'] = np.histogram(data['EPSP_amplitudes'],nbins,density=True)
+        data['binwidth'] = np.diff(data['edges'][:2])[0]
+        x = data['edges'][:-1] + data['binwidth']/2
+        if data['distr_name'] == 'normal':
+            p0 = [np.mean(data['EPSP_amplitudes']),np.std(data['EPSP_amplitudes'])]
+            data['popt'],pcov = curve_fit(normal,x,data['hist'],p0)
+        else:
+            p0 = [np.mean(np.log(data['EPSP_amplitudes'])),np.std(np.log(data['EPSP_amplitudes']))]
+            data['popt'],pcov = curve_fit(lognormal,x,data['hist'],p0)
+        pickle.dump(data,open(f_in,'w'))
 
     if args.output is None:
         f_out = f_in.split('.pkl')[0] + '.pdf'
@@ -214,7 +231,7 @@ def plot():
     plt.xlabel('EPSP amplitude (mV)')
     plt.ylabel('PDF')
     plt.title('mu,sigma = %g,%g' % (data['mu'],data['sigma']))
-    plt.xlim([0,4])
+    plt.xlim([0,6])
     plt.savefig(f_out)
 
 
