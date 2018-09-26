@@ -65,7 +65,7 @@ def build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, mu, s
     return cell,synapses
 
 
-def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, reps, output_folder='.', do_plot=True):
+def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, reps, output_dir='.', do_plot=True):
     """
     Instantiates reps cells and simulates them while recording the membrane potential. EPSPs are then extracted and their
     distribution is computed and fit with an appropriate distribution. Also saves the results to disk.
@@ -138,7 +138,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
             'params_file': params_file, 'distr_name': distr_name, 'mu': mu, 'sigma': sigma, \
             'scaling': scaling, 'slm_border': slm_border, 'hist': hist, 'binwidth': binwidth, \
             'edges': edges, 'popt': popt}
-    pickle.dump(data,open(output_folder + '/' + filename + '.pkl','w'))
+    pickle.dump(data,open(output_dir + '/' + filename + '.pkl','w'))
 
 
 ############################################################
@@ -179,7 +179,7 @@ def simulate():
         raise 'The number of repetitions must be positive'
     
     simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file, args.distr, \
-                                 args.mean, args.std, args.scaling, args.reps, args.output_folder, do_plot=args.plot)
+                                 args.mean, args.std, args.scaling, args.reps, args.output_dir, do_plot=args.plot)
 
 
 ############################################################
