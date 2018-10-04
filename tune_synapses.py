@@ -22,49 +22,6 @@ normal = lambda x,m,s: 1./(np.sqrt(2*np.pi*s**2)) * np.exp(-(x-m)**2/(2*s**2))
 lognormal = lambda x,m,s: 1./(s*x*np.sqrt(2*np.pi)) * np.exp(-(np.log(x)-m)**2/(2*s**2))
 
 
-def build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, mu, sigma, delay, dt, scaling=1., slm_border=100.):
-    """
-    Builds a cell and inserts one synapse per segment. Each synapse is activated sequentially.
-    """
-    
-    cell = cu.Cell('CA3_cell_%d' % int(np.random.uniform()*1e5),{'morphology': swc_file,
-                                                                 'mechanisms': mech_file,
-                                                                 'parameters': params_file})
-
-    cell.instantiate()
-
-    if distr_name == 'normal':
-        rand_func = np.random.normal
-    else:
-        rand_func = np.random.lognormal
-        mu = np.log(mu)
-        
-    # one synapse in each basal segment
-    Nsyn = {'basal': len(cell.basal_segments)}
-    weights = {'basal': [x if x > 0 else 0 for x in rand_func(mu,sigma,size=Nsyn['basal'])]}
-    synapses = {}
-    synapses['basal'] = [su.AMPANMDASynapse(basal_segment['sec'], basal_segment['seg'].x, 0, [w,scaling*w]) \
-                         for basal_segment,w in zip(cell.basal_segments,weights['basal'])]
-    # one synapse in each apical segment that is within slm_border um from the tip of the apical dendrites
-    y_coord = np.array([h.y3d(round(h.n3d(sec=segment['sec'])*segment['seg'].x),sec=segment['sec']) \
-                        for segment in cell.apical_segments])
-    max_y_coord = max(y_coord) - slm_border
-    idx, = np.where(y_coord<max_y_coord)
-    Nsyn['apical'] = len(idx)
-    weights['apical'] = [x if x > 0 else 0 for x in rand_func(mu,sigma,size=Nsyn['apical'])]
-    synapses['apical']  = [su.AMPANMDASynapse(cell.apical_segments[i]['sec'], cell.apical_segments[i]['seg'].x, 0, [w,scaling*w]) \
-                           for i,w in zip(idx,weights['apical'])]
-
-    # activate each synapse in a sequential fashion
-    t_event = delay
-    for synapse_group in synapses.values():
-        for syn in synapse_group:
-            syn.set_presynaptic_spike_times([t_event])
-            t_event += dt
-
-    return cell,synapses
-
-
 def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, reps, output_dir='.', do_plot=True):
     """
     Instantiates reps cells and simulates them while recording the membrane potential. EPSPs are then extracted and their
@@ -85,8 +42,14 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
     synapses = []
     recorders = [h.Vector() for rep in range(reps)]
     for rep in range(reps):
-        cell,syn = build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, \
-                                            mu, sigma, delay, dt, scaling, slm_border)
+        cell,syn = su.build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, \
+                                               mu, sigma, scaling, slm_border)
+        # activate each synapse in a sequential fashion
+        t_event = delay
+        for syn_group in syn.values():
+            for s in syn_group:
+                s.set_presynaptic_spike_times([t_event])
+                t_event += dt
         cells.append(cell)
         synapses.append(syn)
         recorders[rep].record(cell.morpho.soma[0](0.5)._ref_v)
