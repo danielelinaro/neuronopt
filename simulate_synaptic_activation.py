@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,10 +11,7 @@ import cell_utils as cu
 import synapse_utils as su
 import pickle
 import json
-
-make_event_train = lambda rate,N,offset: np.arange(N)/float(rate) + offset
-
-DEBUG = False
+import tables as tbl
 
 
 def get_segment_coords(seg):
@@ -65,11 +63,11 @@ def make_recorders(cell,synapses=None,full=False):
     return recorders,coords,apc
 
 def save_recorders(recorders,coords,args):
-    import tables as tbl
-    
     class Simulation (tbl.IsDescription):
+        distribution = tbl.StringCol(16)
         mu = tbl.Float64Col()
         sigma = tbl.Float64Col()
+        scaling = tbl.Float64Col()
         rate = tbl.Float64Col()
         delay = tbl.Float64Col()
         dur = tbl.Float64Col()
@@ -82,13 +80,19 @@ def save_recorders(recorders,coords,args):
     sys.stdout.write('Saving data... ')
     sys.stdout.flush()
 
-    h5file = tbl.open_file(args.output,mode='w',title='Recorders')
+    now = time.localtime(time.time())
+    filename = '%s/synaptic_activation_%d%02d%02d_%02d%02d%02d.h5' % \
+               (args.output_dir,now.tm_year,now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec)
+
+    h5file = tbl.open_file(filename,mode='w',title='Recorders')
     
     sim_group = h5file.create_group(h5file.root, 'Simulation')
     table = h5file.create_table(sim_group, 'Info', Simulation)
     sim = table.row
+    sim['distribution'] = args.distr
     sim['mu'] = args.mu
     sim['sigma'] = args.sigma
+    sim['scaling'] = args.scaling
     sim['rate'] = args.rate
     sim['delay'] = args.delay
     sim['dur'] = args.dur
@@ -145,22 +149,24 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
             cnt += 1
 
 
-def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, rate, delay, dur, spikes_file=None, do_plot=False):
+def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, rate, delay, dur, spikes_file=None, do_plot=False):
 
     cell,synapses = su.build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, \
-                                                mu, sigma, scaling=1., slm_border=100.)
+                                                mu, sigma, scaling, slm_border=100.)
 
     recorders,coords,apc = make_recorders(cell, synapses)
 
     set_presynaptic_spike_times(synapses, rate, dur, delay, spikes_file)
 
+    # run the simulation
+    start = time.time()
+    now = time.localtime(start)
+    sys.stdout.write('%02d/%02d %02d:%02d:%02d >> ' % (now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec))
+    sys.stdout.flush()
     h.cvode_active(1)
     h.tstop = dur + delay*2
-
-    sys.stdout.write('Running simulation... ')
-    sys.stdout.flush()
     h.run()
-    sys.stdout.write('done.\n')
+    sys.stdout.write('elapsed time: %d seconds.\n' % (time.time()-start))
 
     if do_plot:
         plt.figure()
@@ -182,9 +188,11 @@ def main():
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
     parser.add_argument('-p','--params-file', type=str, help='JSON file containing the parameters of the model', required=True)
-    parser.add_argument('-o','--output', type=str, default='sim.h5', help='Output file name (default: sim.pkl)')
+    parser.add_argument('--output-dir', type=str, default='.', help='Output file name (default: sim.pkl)')
+    parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
     parser.add_argument('--mu', type=float, help='Mean of the distribution of synaptic weights')
     parser.add_argument('--sigma', type=float, help='Standard deviation of the distribution of synaptic weights')
+    parser.add_argument('--scaling', default=1., type=float, help='AMPA/NMDA scaling')
     parser.add_argument('--rate', type=float, help='Firing rate of the presynaptic cells')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
@@ -193,7 +201,7 @@ def main():
     args = parser.parse_args(args=sys.argv[1:])
 
     recorders,coords = simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file,\
-                                                    'lognormal', args.mu, args.sigma, \
+                                                    args.distr, args.mu, args.sigma, args.scaling,\
                                                     args.rate, args.delay, args.dur, \
                                                     args.spikes_file, args.plot)
     

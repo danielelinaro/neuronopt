@@ -65,9 +65,11 @@ def build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, mu, s
 
     if distr_name == 'normal':
         rand_func = np.random.normal
-    else:
+    elif distr_name == 'lognormal':
         rand_func = np.random.lognormal
         mu = np.log(mu)
+    else:
+        raise Exception('Unknown distribution [%s]' % distr_name)
 
     # one synapse in each basal segment
     Nsyn = {'basal': len(cell.basal_segments)}
