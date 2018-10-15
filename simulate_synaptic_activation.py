@@ -130,7 +130,7 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
         num = np.unique(data[:,1])
         N = len(num)
         idx = np.random.randint(1,total_number_of_synapses,N)
-        spike_times = {i: data[data[:,1]==n,0] for i,n in zip(idx,num)}
+        spike_times = {i: data[data[:,1]==n,0]+delay for i,n in zip(idx,num)}
     else:
         spike_times = {}
 
