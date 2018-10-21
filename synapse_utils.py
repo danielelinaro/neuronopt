@@ -19,6 +19,9 @@ class Synapse (object):
         self.spike_times = h.Vector(spike_times)
         self.stim.play(self.spike_times)
 
+    def get_presynaptic_spike_times(self):
+        return np.array(self.spike_times)
+
 
 class AMPANMDASynapse (Synapse):
     def __init__(self, sec, x, E, weight, delay=1.):

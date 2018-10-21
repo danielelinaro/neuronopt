@@ -62,7 +62,7 @@ def make_recorders(cell,synapses=None,full=False):
     sys.stdout.write('done.\n')
     return recorders,coords,apc
 
-def save_recorders(recorders,coords,args):
+def save_data(recorders,coords,synapses,args):
     class Simulation (tbl.IsDescription):
         distribution = tbl.StringCol(16)
         mu = tbl.Float64Col()
@@ -71,12 +71,8 @@ def save_recorders(recorders,coords,args):
         rate = tbl.Float64Col()
         delay = tbl.Float64Col()
         dur = tbl.Float64Col()
+        seed = tbl.Int64Col()
         
-    class Coord (tbl.IsDescription):
-        x = tbl.Float64Col()
-        y = tbl.Float64Col()
-        z = tbl.Float64Col()
-
     sys.stdout.write('Saving data... ')
     sys.stdout.flush()
 
@@ -96,10 +92,15 @@ def save_recorders(recorders,coords,args):
     sim['rate'] = args.rate
     sim['delay'] = args.delay
     sim['dur'] = args.dur
+    if args.seed is None:
+        sim['seed'] = -1
+    else:
+        sim['seed'] = args.seed
     sim.append()
 
     data_group = h5file.create_group(h5file.root, 'Data')
     voltage_data_group = h5file.create_group(data_group, 'Vm')
+    presyn_spike_times_data_group = h5file.create_group(data_group, 'Presyn_spike_times')
     i_ampa_data_group = h5file.create_group(data_group, 'I_AMPA')
     i_nmda_data_group = h5file.create_group(data_group, 'I_NMDA')
 
@@ -109,6 +110,12 @@ def save_recorders(recorders,coords,args):
     for i,(rec,coord) in enumerate(zip(recorders['Vm'],coords['Vm'])):
         array = h5file.create_array(voltage_data_group, 'Vm_%04d'%i, np.array(rec))
         array.attrs.coord = coord
+
+    for name,syn_group in synapses.iteritems():
+        grp = h5file.create_group(presyn_spike_times_data_group, name)
+        for i,syn in enumerate(syn_group):
+            array = h5file.create_array(grp, 'syn_%04d'%i, syn.get_presynaptic_spike_times())
+            array.attrs.coord = get_segment_coords(syn.seg)
 
     try:
         for i,(rec_ampa,rec_nmda,coord) in enumerate(zip(recorders['I_AMPA'],recorders['I_NMDA'],coords['Isyn'])):
@@ -121,7 +128,9 @@ def save_recorders(recorders,coords,args):
 
     sys.stdout.write('done.\n')
 
-def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_file=None):
+def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_file=None, seed=None):
+
+    np.random.seed(seed)
 
     total_number_of_synapses = np.sum(map(len,synapses.values()))
 
@@ -130,7 +139,7 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
         num = np.unique(data[:,1])
         N = len(num)
         idx = np.random.randint(1,total_number_of_synapses,N)
-        spike_times = {i: data[data[:,1]==n,0]+delay for i,n in zip(idx,num)}
+        spike_times = {i: np.unique(data[data[:,1]==n,0])+delay for i,n in zip(idx,num)}
     else:
         spike_times = {}
 
@@ -149,14 +158,14 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
             cnt += 1
 
 
-def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, rate, delay, dur, spikes_file=None, do_plot=False):
+def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, rate, delay, dur, rnd_seed=None, spikes_file=None, do_plot=False):
 
     cell,synapses = su.build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, \
                                                 mu, sigma, scaling, slm_border=100.)
 
     recorders,coords,apc = make_recorders(cell, synapses)
 
-    set_presynaptic_spike_times(synapses, rate, dur, delay, spikes_file)
+    set_presynaptic_spike_times(synapses, rate, dur, delay, spikes_file, rnd_seed)
 
     # run the simulation
     start = time.time()
@@ -180,7 +189,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
         plt.xlabel('Time (ms)')
         plt.show()
         
-    return recorders,coords
+    return recorders,coords,synapses
 
 
 def main():
@@ -196,16 +205,17 @@ def main():
     parser.add_argument('--rate', type=float, help='Firing rate of the presynaptic cells')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
+    parser.add_argument('--seed', default=None, type=str, help='The seed of the random number generator')
     parser.add_argument('--spikes-file', default=None, type=str, help='File containing presynaptic spike times')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     args = parser.parse_args(args=sys.argv[1:])
 
-    recorders,coords = simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file,\
-                                                    args.distr, args.mu, args.sigma, args.scaling,\
-                                                    args.rate, args.delay, args.dur, \
-                                                    args.spikes_file, args.plot)
+    recorders,coords,synapses = simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file,\
+                                                             args.distr, args.mu, args.sigma, args.scaling,\
+                                                             args.rate, args.delay, args.dur, args.seed,\
+                                                             args.spikes_file, args.plot)
     
-    save_recorders(recorders,coords,args)
+    save_data(recorders,coords,synapses,args)
     
 
 if __name__ == '__main__':
