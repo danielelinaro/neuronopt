@@ -22,7 +22,7 @@ def get_segment_coords(seg):
                      h.z3d(int(seg.x*n_pts),sec=sec)])
 
 
-def make_recorders(cell,synapses=None,full=False):
+def make_recorders(cell,synapses=None,bifurcation=False,full=False):
     sys.stdout.write('Adding a recorder to each segment... ')
     sys.stdout.flush()
     
@@ -44,6 +44,15 @@ def make_recorders(cell,synapses=None,full=False):
                 vec.record(seg._ref_v)
                 recorders['Vm'].append(vec)
                 coords['Vm'].append(get_segment_coords(seg))
+
+    if bifurcation and not full:
+        for seg in cell.morpho.apic[0]:
+            pass
+        #seg = cell.morpho.apic[0](1)
+        vec = h.Vector()
+        vec.record(seg._ref_v)
+        recorders['Vm'].append(vec)
+        coords['Vm'].append(get_segment_coords(seg))
 
     if full and synapses is not None:
         recorders['I_AMPA'] = []
@@ -138,7 +147,9 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
         data = np.loadtxt(spike_times_file)
         num = np.unique(data[:,1])
         N = len(num)
-        idx = np.random.randint(1,total_number_of_synapses,N)
+        idx = np.array([])
+        while len(idx) < N:
+            idx = np.unique(np.append(idx,np.random.randint(1,total_number_of_synapses+1)))
         spike_times = {i: np.unique(data[data[:,1]==n,0])+delay for i,n in zip(idx,num)}
     else:
         spike_times = {}
@@ -153,17 +164,15 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
             except:
                 ISIs = -np.log(np.random.uniform(size=Nev))/rate
                 spks = delay + np.cumsum(ISIs)*1e3
-                print('%03d > generated presynaptic spike times from scratch.' % cnt)
+                #print('%03d > generated presynaptic spike times from scratch.' % cnt)
             syn.set_presynaptic_spike_times(spks[spks < delay+duration])
             cnt += 1
 
-
 def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, rate, delay, dur, rnd_seed=None, spikes_file=None, do_plot=False):
-
     cell,synapses = su.build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, \
                                                 mu, sigma, scaling, slm_border=100.)
 
-    recorders,coords,apc = make_recorders(cell, synapses)
+    recorders,coords,apc = make_recorders(cell, synapses, bifurcation=True, full=False)
 
     set_presynaptic_spike_times(synapses, rate, dur, delay, spikes_file, rnd_seed)
 
@@ -180,11 +189,8 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
     if do_plot:
         plt.figure()
         t = np.array(recorders['time'])
-        for rec in recorders:
-            if 'soma' in rec:
-                v = np.array(recorders[rec]['vec'])
-                break
-        plt.plot(t,v,'k')
+        for rec in recorders['Vm']:
+            plt.plot(t,rec)
         plt.ylabel(r'$V_m$ (mV)')
         plt.xlabel('Time (ms)')
         plt.show()

@@ -199,6 +199,30 @@ class Cell (object):
         if DEBUG:
             print('Total area: %.0f um^2.' % self.total_area)
 
+    def find_section_with_point(self,pt):
+        dst = []
+        points = []
+        names = []
+        index = []
+        for sec in self.morpho.all:
+            for i in range(int(h.n3d(sec=sec))):
+                points.append(np.array([h.x3d(i,sec=sec),h.y3d(i,sec=sec),h.z3d(i,sec=sec)]))
+                dst.append(np.sqrt(np.sum((pt-points[-1])**2)))
+                names.append(sec.name())
+                index.append(i)
+                if h.x3d(i,sec=sec) == pt[0] and \
+                   h.y3d(i,sec=sec) == pt[1] and \
+                   h.z3d(i,sec=sec) == pt[2]:
+                    return sec
+        idx = np.argsort(dst)
+        dst = np.sort(dst)
+        points = [points[i] for i in idx]
+        names = [names[i] for i in idx]
+        index = [index[i] for i in idx]
+        with open('out.txt','w') as fid:
+            for n,i,d,p in zip(names,index,dst,points):
+                fid.write('[%s,%03d] %10.6f --- (%11.6f,%11.6f,%11.6f) <-> (%11.6f,%11.6f,%11.6f)\n' % (n,i,d,p[0],p[1],p[2],pt[0],pt[1],pt[2]))
+        return None
 
     def distance_from_soma(self, sec, x=None):
         if x is not None:
