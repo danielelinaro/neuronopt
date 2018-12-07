@@ -355,6 +355,103 @@ def plot():
 
 
 ############################################################
+###                        CLEAN                         ###
+############################################################
+
+
+def clean():
+    parser = arg.ArgumentParser(description='Clean a morphology',
+                                prog=progname+' clean')
+    parser.add_argument('swc_file', type=str, action='store', help='SWC file')
+    parser.add_argument('-o', '--output', default=None, type=str, help='output file name')
+    parser.add_argument('-n', default=None, type=int, help='minimum number of points to keep a branch')
+    parser.add_argument('-f', '--force', action='store_true', help='force overwrite of existing output file')
+    args = parser.parse_args(args=sys.argv[2:])
+
+    f_in = args.swc_file
+    if args.output is None:
+        f_out = f_in.split('.swc')[0] + '_min_branch_length_%d.swc' % args.n
+    else:
+        f_out = args.output
+
+    if not os.path.isfile(f_in):
+        print('%s: %s: no such file.' % (progname,f_in))
+        sys.exit(0)
+
+    if args.n is None:
+        print('You must specify the minimum number of points necessary for a branch to be kept (-n option).')
+        sys.exit(0)
+
+    if os.path.isfile(f_out) and not args.force:
+        print('%s exists: use the -f option to force overwrite.' % f_out)
+        sys.exit(0)
+
+    tree = btmorph.STree2()
+    tree.read_SWC_tree_from_file(f_in)
+
+    def remove_short_branches(node,branch_start,length,min_length):
+        if not node.parent is None and len(node.parent.children) > 1:
+            branch_start = node
+            length = 0
+        length += 1
+        removed = 0
+        if len(node.children) == 0:
+            if length < min_length:
+                if branch_start.content['p3d'].type != 1:
+                    tree.remove_node(branch_start)
+                    removed = 1
+        else:
+            for child in node.children:
+                removed += remove_short_branches(child,branch_start,length,min_length)
+        return removed
+
+    total_num_removed = 0
+    cnt = 0
+    while True:
+        num_removed = remove_short_branches(tree.root, tree.root, 0, args.n)
+        total_num_removed += num_removed
+        cnt += 1
+        print('[%02d] number of branches removed: %d.' % (cnt,num_removed))
+        if num_removed == 0:
+            break
+    print('>>> total number of branches with length <= %d points removed: %d.' % (args.n,total_num_removed))
+
+    fid = open(f_out,'w')
+    for index,node in enumerate(tree):
+        node.index = index+1
+        xyz = node.content['p3d'].xyz
+        if node.parent is None:
+            index = -1
+        else:
+            index = node.parent.index
+        fid.write('%d %d %g %g %g %g %d\n' % (node.index,node.content['p3d'].type,
+                                              xyz[0], xyz[1], xyz[2],
+                                              node.content['p3d'].radius, index))
+    fid.close()
+
+    sys.exit(0)
+    
+    import matplotlib.pyplot as plt
+    plt.figure()
+    for node in tree:
+        if node.parent is None:
+            continue
+        x = [node.parent.content['p3d'].xyz[0],node.content['p3d'].xyz[0]]
+        y = [node.parent.content['p3d'].xyz[1],node.content['p3d'].xyz[1]]
+        plt.plot(x,y,'k.-')
+        if len(node.children) == 0:
+            plt.plot(x[1],y[1],'ro')
+        elif len(node.children) > 1:
+            plt.plot(x[1],y[1],'yo')
+        #if node.index in to_remove:
+        #    if len(node.children) == 0:
+        #        plt.plot(x[1],y[1],'ro')
+        #    else:
+        #        plt.plot(x[1],y[1],'gx')
+    plt.show()
+
+
+############################################################
 ###                         HELP                         ###
 ############################################################
 
@@ -375,13 +472,15 @@ def help():
         print('')
         print('Type \'%s help <command>\' for help about a specific command.' % progname)
 
+
+
 ############################################################
 ###                         MAIN                         ###
 ############################################################
 
 
 # all the commands currently implemented
-commands = {'help': help, 'convert': convert, 'build': build, 'plot': plot, 'simplify': simplify}
+commands = {'help': help, 'convert': convert, 'build': build, 'plot': plot, 'simplify': simplify, 'clean': clean}
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):
