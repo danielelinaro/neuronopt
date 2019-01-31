@@ -469,6 +469,7 @@ def help():
         print('   build          Use a converted morphology to build a cell in NEURON and obtain some statistics')
         print('   plot           Plot a converted morphology file')
         print('   simplify       Simplify a converted morphology')
+        print('   clean          Remove branches below a certain length')
         print('')
         print('Type \'%s help <command>\' for help about a specific command.' % progname)
 

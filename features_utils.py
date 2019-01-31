@@ -81,8 +81,8 @@ def write_features():
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
-    parser.add_argument('--cell-type', default='RS',
-                        help='feature set to use (default: "RS". "B" also available)')
+    parser.add_argument('--cell-type', default='BBP',
+                        help='feature set to use (default: "BBP")')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -108,12 +108,16 @@ def write_features():
 
     if args.features_file is None:
         features_file = 'features'
+    else:
+        features_file = args.features_file
     if args.suffix != '':
         features_file += '_' + args.suffix
     features_file += '.json'
 
     if args.protocols_file is None:
         protocols_file = 'protocols'
+    else:
+        protocols_file = args.protocols_file
     if args.suffix != '':
         protocols_file += '_' + args.suffix
     protocols_file += '.json'
