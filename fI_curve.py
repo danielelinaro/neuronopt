@@ -138,7 +138,7 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
         plt.xlabel('Current (nA)')
         plt.ylabel(r'$f$ (spikes/s)')
         plt.legend(loc='best')
-        plt.savefig('fI_curve.pdf')
+        plt.savefig('fI_curve_' + params_file.split('.')[0] + '.pdf')
         plt.show()
 
     return f,no_spikes,inverse_first_isi,inverse_last_isi
@@ -183,10 +183,11 @@ def main():
                                                                            params_files, args.delay, args.dur, args.tran)
         suffix = make_suffix(params_files)
     else:
+        params_files = params_files[0]
         f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, args.mech_file, \
                                                                           params_files, args.delay, args.dur, \
                                                                           args.tran, 'MyCell', do_plot=True)
-        suffix = args.params_files.split('.')[0]
+        suffix = params_files.split('.')[0]
 
     fI_curve = {'I': I, 'f': f,
                 'no_spikes': no_spikes,
