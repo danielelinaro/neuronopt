@@ -11,7 +11,7 @@ import pickle
 import json
 
 
-def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_name='MyCell', do_plot=False):
+def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_name='MyCell', do_plot=False, verbose=False, sim=None):
     cell = cu.Cell(cell_name,{'morphology': swc_file,
                               'mechanisms': mech_file,
                               'parameters': params_file})
@@ -45,12 +45,14 @@ def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_na
             recorders['Vbasal'].record(sec(0.5)._ref_v)
             break
 
-    h.cvode_active(1)
-    h.tstop = stim.dur + stim.delay + 100
-
-    print('Simulating I = %g pA.' % (stim.amp*1e3))
-
-    h.run()
+    if sim is None:
+        h.cvode_active(1)
+        h.tstop = stim.dur + stim.delay + 100
+        if verbose:
+            print('Simulating I = %g pA.' % (stim.amp*1e3))
+        h.run()
+    else:
+        sim.run(stim.dur + stim.delay + 100)
 
     if do_plot:
         plt.figure()
@@ -59,8 +61,8 @@ def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_na
         #    plt.plot(t,recorders['Vaxon'],'r',label='Axon')
         #except:
         #    pass
-        plt.plot(t,recorders['Vbasal'],'g',label='Basal')
-        plt.plot(t,recorders['Vapic'],'b',label='Apical')
+        #plt.plot(t,recorders['Vbasal'],'g',label='Basal')
+        #plt.plot(t,recorders['Vapic'],'b',label='Apical')
         plt.plot(t,recorders['Vsoma'],'k',label='Soma')
         plt.legend(loc='best')
         plt.ylabel(r'$V_m$ (mV)')
@@ -80,9 +82,10 @@ def main():
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='be verbose (default: no)')
     args = parser.parse_args(args=sys.argv[1:])
 
-    rec = inject_current_step(args.I, args.swc_file, args.mech_file, args.params_file, args.delay, args.dur, 'MyCell', args.plot)
+    rec = inject_current_step(args.I, args.swc_file, args.mech_file, args.params_file, args.delay, args.dur, 'MyCell', args.plot, args.verbose)
     
     step = {'I': args.I, 'time': np.array(rec['t']), 'voltage': np.array(rec['Vsoma']), 'spike_times': np.array(rec['spike_times'])}
 

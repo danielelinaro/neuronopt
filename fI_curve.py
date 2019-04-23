@@ -124,8 +124,8 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
             plt.ylabel(r'$V_m$ (mV)')
             plt.xlabel('Time (ms)')
 
-    no_spikes = np.array(map(lambda x: x.shape[0]/dur*1e3, spike_times)).squeeze()
-    f = np.array(map(lambda x: len(np.where(x > delay+tran)[0])/(dur-tran)*1e3, spike_times)).squeeze()
+    no_spikes = np.array([x.shape[0]/dur*1e3 for x in spike_times])
+    f = np.array([len(x[(x>delay+tran) & (x<delay+dur)])/(dur-tran)*1e3 for x in spike_times])
     inverse_first_isi = np.array([1e3/np.diff(t[:2]) if len(t) > 1 else 0 for t in spike_times]).squeeze()
     inverse_last_isi = np.array([1e3/np.diff(t[-2:]) if len(t) > 1 else 0 for t in spike_times]).squeeze()
 
@@ -194,7 +194,7 @@ def main():
                 'inverse_first_isi': inverse_first_isi,
                 'inverse_last_isi': inverse_last_isi}
 
-    pickle.dump(fI_curve, open('fI_curve_'+suffix+'.pkl','w'))
+    pickle.dump(fI_curve, open('fI_curve_'+suffix+'.pkl','wb'))
 
 
 if __name__ == '__main__':

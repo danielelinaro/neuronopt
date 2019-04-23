@@ -28,10 +28,10 @@ def load_files():
     features = json.load(open(files['config']['features'],'r'))
     mechanisms = json.load(open(files['config']['mechanisms'],'r'))
     
-    hall_of_fame = pickle.load(open(files['results']['hof'],'r'))
-    final_pop = pickle.load(open(files['results']['final_pop'],'r'))
-    evaluator = pickle.load(open(files['results']['eval'],'r'))
-    responses = pickle.load(open(files['results']['hof_resp'],'r'))
+    hall_of_fame = np.array(pickle.load(open(files['results']['hof'],'rb'),encoding='latin1'))
+    final_pop = np.array(pickle.load(open(files['results']['final_pop'],'rb'),encoding='latin1'))
+    evaluator = pickle.load(open(files['results']['eval'],'rb'),encoding='latin1')
+    responses = pickle.load(open(files['results']['hof_resp'],'rb'),encoding='latin1')
 
     return parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses
 
@@ -51,8 +51,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     pop_size = len(final_pop)
     n_params = len(evaluator.param_names)
 
-    params = np.array([map(lambda x: x[i], final_pop) \
-                       for i in range(n_params)])
+    params = final_pop.transpose().copy()
     bounds = np.zeros((n_params,2))
     for i in range(n_params):
         bounds[i,:] = evaluator.cell_model.params[evaluator.param_names[i]].bounds
@@ -66,18 +65,18 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
 
     features = {}
     features_std_units = {}
-    for proto,feature_names in target_features.iteritems():
+    for proto,feature_names in target_features.items():
         stim_start = evaluator.fitness_protocols[proto].stimuli[0].step_delay
         stim_end = stim_start + evaluator.fitness_protocols[proto].stimuli[0].step_duration
         trace = {'T': responses[individual][proto+'.soma.v']['time'],
                  'V': responses[individual][proto+'.soma.v']['voltage'],
                  'stim_start': [stim_start], 'stim_end': [stim_end]}
-        features[proto] = {k:[np.mean(v),np.std(v)] for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].iteritems()}
+        features[proto] = {k:[np.mean(v),np.std(v)] for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].items()}
         features_std_units[proto] = {k:np.abs(target_features[proto]['soma'][k][0]-np.mean(v))/target_features[proto]['soma'][k][1] \
-                                     for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].iteritems()}
+                                     for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].items()}
         print('%s:' % proto)
         feature_values = efel.getFeatureValues([trace],feature_names['soma'])[0]
-        for name,values in feature_names['soma'].iteritems():
+        for name,values in feature_names['soma'].items():
             print('\t%s: model: %g (%g std from data mean). data: %g +- %g (std/mean: %g)' %
                   (name,feature_values[name][0],np.abs(values[0]-feature_values[name][0])/values[1],
                    values[0],values[1],values[1]/np.abs(values[0])))
@@ -107,7 +106,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
         fid = open('%s_individual_%d_traces.csv'%(os.path.basename(os.path.abspath('.')),individual),'w')
     for resp in responses[individual].values():
         # this is because of the variable time-step integration
-        start = np.where(resp['time'] > stim_start-before)[0][0] - 1
+        start = np.max((0,np.where(resp['time'] > stim_start-before)[0][0] - 1))
         stop = np.where(resp['time'] < stim_end+after)[0][-1] + 2
         idx = np.arange(start,stop)
         plt.plot(resp['time'][idx],resp['voltage'][idx]+offset,'k',lw=1)
@@ -137,17 +136,15 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     offset = 0.175
     space = 0.03
     dx = (0.97 - offset - (nsteps-1)*space)/nsteps
-    all_feature_names = features_std_units['Step3'].keys()
-    idx = [i[0] for i in sorted(enumerate(all_feature_names), key=lambda x:x[1])]
-    all_feature_names = [all_feature_names[i] for i in idx]
+    all_feature_names = sorted(features_std_units['Step3'].keys())
     n_features = len(all_feature_names)
     Y = range(n_features,0,-1)
     dy = 0.3
     green = [0,.7,.3]
-    for i,(stepnum,feat) in enumerate(features_std_units.iteritems()):
+    for i,(stepnum,feat) in enumerate(features_std_units.items()):
         ax = plt.axes([offset+i*(dx+space),0.4,dx,0.2])
         X = np.zeros(n_features)
-        for k,v in feat.iteritems():
+        for k,v in feat.items():
             idx, = np.where([k == f for f in all_feature_names])
             X[idx] = v
         for x,y in zip(X,Y):

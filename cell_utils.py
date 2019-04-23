@@ -117,7 +117,7 @@ class Cell (object):
         defaults = {'mechanisms': 'mechanisms.json','parameters': 'parameters.json'}
         self.cell_name = cell_name
         self.config_files = config_files
-        for k,v in defaults.iteritems():
+        for k,v in defaults.items():
             if k not in self.config_files:
                 self.config_files[k] = v
         self.seclist_names = ['all', 'somatic', 'basal', 'apical', 'axonal', 'myelinated']
@@ -154,7 +154,7 @@ class Cell (object):
 
     def biophysics(self):
         mechanisms = json.load(open(self.config_files['mechanisms'],'r'))
-        for reg,mechs in mechanisms.iteritems():
+        for reg,mechs in mechanisms.items():
             region = getattr(self.morpho,reg)
             for sec in region:
                 for mech in mechs:
@@ -186,7 +186,7 @@ class Cell (object):
                         for seg in sec:
                             dst = h.distance(seg.x,sec=sec)
                             g = eval(param['dist'].format(distance=dst,value=param['value']))
-                            setattr(sec,param['param_name'],g)
+                            setattr(seg,param['param_name'],g)
             else:
                 print('Unknown parameter type: %s.' % param['type'])
 
