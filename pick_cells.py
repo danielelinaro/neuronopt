@@ -8,13 +8,12 @@ import pickle
 import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
+
 import efel
-if not '/Users/daniele/Postdoc/Research/Janelia/neuronopt' in sys.path:
-    sys.path.append('/Users/daniele/Postdoc/Research/Janelia/neuronopt')
-#from neuron import h
-from current_step import inject_current_step
-import ipdb
 from neuron import h
+from scoop import futures
+from current_step import inject_current_step
+
 
 class ColorFactory:
     RED = '\033[91m'
@@ -114,21 +113,29 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose')
     args = parser.parse_args(args=sys.argv[1:])
 
-    features_to_consider = []
-    if args.features == 'all':
-        pass
-    
     folder = args.folder
+    if not os.path.isdir(folder):
+        print('%s: %s: no such directory.' % (os.path.basename(sys.argv[0]),folder))
+        sys.exit(1)
+
     err_max = args.threshold
+
+    features_to_consider = []
+    if args.features != 'all':
+        features_to_consider = args.features.split(',')
+
     features_to_ignore = []
     if args.ignore is not None:
         features_to_ignore = args.ignore.split(',')
+
+    for feature in features_to_ignore:
+        if feature in features_to_consider:
+            print('Feature "%s" is both to consider and to ignore...' % feature)
+            sys.exit(1)
+
     do_all = args.all
     verbose = args.verbose
     
-    if not os.path.isdir(folder):
-        print('%s: %s: no such directory.' % (os.path.basename(sys.argv[0]),folder))
-        
     colors = ColorFactory()
 
     final_pop = np.array(pickle.load(open(folder + '/final_population.pkl', 'rb'), encoding='latin1'))
@@ -178,13 +185,15 @@ def main():
         else:
             print('Individual ' + colors.red('%03d'%(i+1)) + ' of the hall-of-fame ' + colors.red('does not match') + ' the requisites.')
 
-    swc_file = folder + '/110203_b_x40_4.converted.swc'
-    mech_file = folder + '/mechanisms.json'
-    do_plot = False
-
-    good_individuals = []
 
     if do_all:
+        swc_file = folder + '/110203_b_x40_4.converted.swc'
+        mech_file = folder + '/mechanisms.json'
+
+        do_plot = False
+
+        good_individuals = []
+
         for i,individual in enumerate(final_pop):
             idx = (individual == hof).all(axis=1).nonzero()[0]
             if len(idx) > 0:
