@@ -5,17 +5,26 @@ import sys
 import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
-from neuron import h
 import cell_utils as cu
 import pickle
 import json
+import time
 
+def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_name=None, neuron=None, do_plot=False, verbose=False):
 
-def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_name='MyCell', do_plot=False, verbose=False, sim=None):
+    if cell_name is None:
+        import random
+        cell_name = 'cell_%06d' % random.randint(0,999999)
+
     cell = cu.Cell(cell_name,{'morphology': swc_file,
                               'mechanisms': mech_file,
                               'parameters': params_file})
     cell.instantiate()
+
+    if neuron is None:
+        h = cu.h
+    else:
+        h = neuron.h
 
     stim = h.IClamp(cell.morpho.soma[0](0.5))
     stim.delay = delay
@@ -45,30 +54,33 @@ def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_na
             recorders['Vbasal'].record(sec(0.5)._ref_v)
             break
 
-    if sim is None:
-        h.cvode_active(1)
-        h.tstop = stim.dur + stim.delay + 100
-        if verbose:
-            print('Simulating I = %g pA.' % (stim.amp*1e3))
-        h.run()
-    else:
-        sim.run(stim.dur + stim.delay + 100)
+    h.cvode_active(1)
+    h.tstop = stim.dur + stim.delay + 100
+
+    fmt = lambda now: '%02d:%02d:%02d' % (now.tm_hour,now.tm_min,now.tm_sec)
+
+    start = time.time()
+    if verbose:
+        print('{}>> I = {} pA started @ {}.'.format(cell_name,stim.amp*1e3,fmt(time.localtime(start))))
+
+    h.run()
+    stop = time.time()
+
+    if verbose:
+        print('{}>> I = {} pA finished @ {}, f = {} spikes/s elapsed time = {} seconds.'.format(
+            cell_name,stim.amp*1e3,fmt(time.localtime(stop)),
+            len(recorders['spike_times'])/dur*1e3,stop-start))
 
     if do_plot:
         plt.figure()
         t = np.array(recorders['t'])
-        #try:
-        #    plt.plot(t,recorders['Vaxon'],'r',label='Axon')
-        #except:
-        #    pass
-        #plt.plot(t,recorders['Vbasal'],'g',label='Basal')
-        #plt.plot(t,recorders['Vapic'],'b',label='Apical')
         plt.plot(t,recorders['Vsoma'],'k',label='Soma')
         plt.legend(loc='best')
         plt.ylabel(r'$V_m$ (mV)')
         plt.xlabel('Time (ms)')
         plt.show()
         
+    h('forall delete_section()')
     return recorders
 
 
