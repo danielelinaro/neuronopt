@@ -11,7 +11,12 @@ class SWCFileSimplifiedMorphology(NrnFileMorphology):
     """SWCFileSimplifiedMorphology"""
 
     SWC_types = {'soma': 1, 'axon': 2, 'basal': 3, 'apical': 4}
-    SWC_types_inverse = {v:k for k,v in SWC_types.iteritems()}
+    try:
+        # Python 2.7
+        SWC_types_inverse = {v:k for k,v in SWC_types.iteritems()}
+    except:
+        # Python 3
+        SWC_types_inverse = {v:k for k,v in SWC_types.items()}
 
     def __init__(self, morphology_path, do_replace_axon=False,
                  do_set_nseg=True, comment='', replace_axon_hoc=None):
