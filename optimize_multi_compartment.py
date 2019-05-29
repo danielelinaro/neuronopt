@@ -39,9 +39,9 @@ def main():
     args = parser.parse_args(args=sys.argv[1:])
 
     if args.swc_file.lower() in ('thorny','rs'):
-        swc_filename = '/Users/daniele/Postdoc/Research/Janelia/SWCs/FINAL/thorny/DH070813-.Edit.scaled.converted.swc'
+        swc_filename = '/Users/daniele/Postdoc/Research/Janelia/morphologies/FINAL/thorny/DH070813-.Edit.scaled.converted.swc'
     elif args.swc_file.lower() in ('a-thorny','ib'):
-        swc_filename = '/Users/daniele/Postdoc/Research/Janelia/SWCs/FINAL/a-thorny/DH070613-1-.Edit.scaled.converted.swc'
+        swc_filename = '/Users/daniele/Postdoc/Research/Janelia/morphologies/FINAL/a-thorny/DH070613-1-.Edit.scaled.converted.swc'
     else:
         swc_filename = args.swc_file
 
