@@ -78,7 +78,7 @@ def main():
             print('Output folder [%s] exists: sleeping for %d seconds...' % (output_folder,nsec))
             time.sleep(nsec)
         else:
-            os.mkdir(output_folder, 0755)
+            os.mkdir(output_folder, 0o755)
             break
 
     for f in filenames.values():

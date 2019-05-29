@@ -1,6 +1,6 @@
 
 __all__ = ['morphology','model','evaluator']
 
-import morphology
-import model
-import evaluator
+from . import morphology
+from . import model
+from . import evaluator
