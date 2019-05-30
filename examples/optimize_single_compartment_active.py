@@ -21,7 +21,7 @@ PLOT = False
 
 def plot_responses(resp):
     plt.figure()
-    for name,tv in resp.iteritems():
+    for name,tv in resp.items():
         plt.plot(tv['time'],tv['voltage'],label=name.split('.')[0],lw=1)
     plt.legend(loc='best')
     plt.xlabel('Time (ms)')

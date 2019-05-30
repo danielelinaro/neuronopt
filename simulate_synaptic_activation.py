@@ -120,7 +120,7 @@ def save_data(recorders,coords,synapses,args):
         array = h5file.create_array(voltage_data_group, 'Vm_%04d'%i, np.array(rec))
         array.attrs.coord = coord
 
-    for name,syn_group in synapses.iteritems():
+    for name,syn_group in synapses.items():
         grp = h5file.create_group(presyn_spike_times_data_group, name)
         for i,syn in enumerate(syn_group):
             array = h5file.create_array(grp, 'syn_%04d'%i, syn.get_presynaptic_spike_times())

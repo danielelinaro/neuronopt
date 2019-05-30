@@ -141,7 +141,7 @@ def create(cell_name, filenames, replace_axon=True, config_dir='config'):
     for k in ('mechanisms','parameters','protocols','features'):
         if not k in filenames:
             filenames[k] = k + '.json'
-    for k,v in filenames.iteritems():
+    for k,v in filenames.items():
         print('%s file: %s' % (k,v))
         
     cell = model.create_cell(cell_name, filenames['morphology'], replace_axon,

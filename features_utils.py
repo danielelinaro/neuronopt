@@ -189,7 +189,7 @@ def write_features():
 
     num_features = len(feature_names[args.cell_type])
     to_remove = []
-    for stepnum,step in features_dict.iteritems():
+    for stepnum,step in features_dict.items():
         if len(step['soma']) < num_features:
             print('Not all features were extracted for protocol "%s".' % stepnum)
             print('The extracted features are the following:\n')
