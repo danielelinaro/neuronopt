@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """Convert params.json and fixed_params.json to parameters.json format"""
 
 #
