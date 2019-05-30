@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--features', default='features.json', type=str, help='features')
     parser.add_argument('--mechanisms', default='mechanisms.json', type=str, help='mechanisms')
     parser.add_argument('--protocols', default='protocols.json', type=str, help='protocols')
+    parser.add_argument('--no-mech-file', action='store_true', help='indicate that there is no mechanisms file')
     parser.add_argument('-p', '--population-size', default=100, type=int, help='population size')
     parser.add_argument('-g', '--num-generation', default=100, type=int, help='number of generations')
     parser.add_argument('--replace-axon', action='store_true', help='replace the axon in the SWC file with an AIS stub')
@@ -48,7 +49,7 @@ def main():
         cell_name = os.path.basename(swc_filename).split('.')[0].replace('-','_')
         if cell_name[0] in '1234567890':
             cell_name = 'c' + cell_name
-        
+
     if args.suffix is None:
         suffix = ''
     else:
@@ -57,13 +58,17 @@ def main():
     filenames = {'morphology': swc_filename,
                  'parameters': ''.join(args.parameters.split('.')[:-1]) + suffix + '.' + args.parameters.split('.')[-1],
                  'features': ''.join(args.features.split('.')[:-1]) + suffix + '.' + args.features.split('.')[-1],
-                 'mechanisms': ''.join(args.mechanisms.split('.')[:-1]) + suffix + '.' + args.mechanisms.split('.')[-1],
                  'protocols': ''.join(args.protocols.split('.')[:-1]) + suffix + '.' + args.protocols.split('.')[-1]}
 
     for f in filenames.values():
         if not os.path.isfile(f) and not os.path.isfile(args.config_dir + '/' + f):
             print('%s: %s: no such file.' % (os.path.basename(sys.argv[0]),f))
             sys.exit(1)
+
+    if args.no_mech_file:
+        filenames['mechanisms'] = ''
+    else:
+        filenames['mechanisms'] = ''.join(args.mechanisms.split('.')[:-1]) + suffix + '.' + args.mechanisms.split('.')[-1],
 
     time.sleep(poisson(10))
     while True:
