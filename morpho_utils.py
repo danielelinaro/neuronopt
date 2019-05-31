@@ -292,7 +292,7 @@ def simplify():
         
     # the original tree
     full_tree = btmorph.STree2()
-    full_tree.read_SWC_tree_from_file(args.swc_file,types=range(10))
+    full_tree.read_SWC_tree_from_file(args.swc_file,types=list(range(10)))
     print('There are %d nodes in the full representation of the morphology.' % len(full_tree.get_nodes()))
 
     # the simplified tree

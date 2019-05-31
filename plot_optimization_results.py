@@ -136,7 +136,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     dx = (0.97 - offset - (nsteps-1)*space)/nsteps
     all_feature_names = sorted(features_std_units['Step3'].keys())
     n_features = len(all_feature_names)
-    Y = range(n_features,0,-1)
+    Y = list(range(n_features,0,-1))
     dy = 0.3
     green = [0,.7,.3]
     for i,(stepnum,feat) in enumerate(features_std_units.items()):
@@ -202,7 +202,7 @@ def main():
     write_optimal_parameters(parameters,hall_of_fame,evaluator)
 
     if args.all:
-        individuals = range(len(responses))
+        individuals = list(range(len(responses)))
     else:
         individuals = args.individuals
 

@@ -139,7 +139,7 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
 
     np.random.seed(seed)
 
-    total_number_of_synapses = np.sum(map(len,synapses.values()))
+    total_number_of_synapses = np.sum(list(map(len,synapses.values())))
 
     if spike_times_file is not None:
         data = np.loadtxt(spike_times_file)

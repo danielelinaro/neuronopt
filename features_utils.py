@@ -93,7 +93,7 @@ def write_features():
     desired_amps = None
 
     if not args.step_amps is None:
-        desired_amps = map(float,args.step_amps.split(','))
+        desired_amps = list(map(float,args.step_amps.split(',')))
         nsteps = len(desired_amps)
 
     if nsteps <= 0:
@@ -195,7 +195,7 @@ def write_features():
                 print('[%02d] %s' % (i+1,feat))
             print('')
             while True:
-                resp = raw_input('Remove this protocol? [yes/no] ')
+                resp = input('Remove this protocol? [yes/no] ')
                 if resp.lower() == 'yes':
                     to_remove.append(stepnum)
                     break
@@ -296,7 +296,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         pickle.dump(data,open(files_out[0],'w'))
     else:
         if len(files_out) == 0:
-            files_out = map(lambda x: x+'.pkl',files_in)
+            files_out = [x+'.pkl' for x in files_in]
         elif len(files_out) != len(files_in):
             raise Exception('There must be as many input as output files')
         for f_in,f_out in zip(files_in,files_out):
@@ -402,7 +402,7 @@ def extract_features():
 
     if mode == 'CA3':
         try:
-            sweeps_to_ignore = map(int, open('IGNORE_SWEEPS','r').readlines())
+            sweeps_to_ignore = list(map(int, open('IGNORE_SWEEPS','r').readlines()))
         except:
             sweeps_to_ignore = []
         files_in = []
@@ -528,7 +528,7 @@ def dump_features():
     for f in args.files:
         features.append(json.load(open(f,'r')))
     labels = args.files
-    idx = np.argsort(map(len,labels))
+    idx = np.argsort(list(map(len,labels)))
     labels = [labels[i] for i in idx]
     features = [features[i] for i in idx]
     nsteps = 3

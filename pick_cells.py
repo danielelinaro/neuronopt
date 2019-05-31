@@ -1,4 +1,4 @@
-from __future__ import print_function
+
 
 import os
 import sys
@@ -106,7 +106,7 @@ def dump_parameters(parameters,default_parameters,evaluator,filename):
     json.dump(default_parameters_copy,open(filename,'w'),indent=4)
 
 
-argsort = lambda seq: sorted(range(len(seq)), key=seq.__getitem__)
+argsort = lambda seq: sorted(list(range(len(seq))), key=seq.__getitem__)
 
 
 def worker(cell_id, args):

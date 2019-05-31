@@ -21,7 +21,7 @@ class SWCFileSimplifiedMorphology(NrnFileMorphology):
 
     def instantiate(self, sim=None, icell=None):
         tree = btmorph.STree2()
-        tree.read_SWC_tree_from_file(self.morphology_path,types=range(10))
+        tree.read_SWC_tree_from_file(self.morphology_path,types=list(range(10)))
 
         # all the sections
         self.sections = []

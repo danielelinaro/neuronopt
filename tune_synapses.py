@@ -122,22 +122,22 @@ def simulate():
     args = parser.parse_args(args=sys.argv[2:])
 
     if args.mean is None:
-        raise 'You must specify the mean of the distribution of synaptic weights'
+        raise ValueError('You must specify the mean of the distribution of synaptic weights')
 
     if args.std is None:
-        raise 'You must specify the standard deviation of the distribution of synaptic weights'
+        raise ValueError('You must specify the standard deviation of the distribution of synaptic weights')
 
     if args.std < 0:
-        raise 'The standard deviation of the distribution of synaptic weights must be non-negative'
+        raise ValueError('The standard deviation of the distribution of synaptic weights must be non-negative')
 
     if not args.distr in ('normal','lognormal'):
-        raise 'The distribution of synaptic weights must either be "normal" or "lognormal"'
+        raise ValueError('The distribution of synaptic weights must either be "normal" or "lognormal"')
 
     if args.scaling < 0:
-        raise 'The AMPA/NMDA scaling must be non-negative'
+        raise ValueError('The AMPA/NMDA scaling must be non-negative')
 
     if args.reps <= 0:
-        raise 'The number of repetitions must be positive'
+        raise ValueError('The number of repetitions must be positive')
     
     simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file, args.distr, \
                                  args.mean, args.std, args.scaling, args.reps, args.output_dir, do_plot=args.plot)

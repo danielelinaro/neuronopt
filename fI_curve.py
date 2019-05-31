@@ -8,7 +8,7 @@ import cell_utils as cu
 import pickle
 import json
 
-make_suffix = lambda params_files:  '--'.join(map(lambda f: '_'.join(f.split('/')[-2:]).split('.json')[0], params_files))
+make_suffix = lambda params_files:  '--'.join(['_'.join(f.split('/')[-2:]).split('.json')[0] for f in params_files])
 
 def plot_means_with_sem(x,y,color='k',label=''):
     Ym = np.mean(y,axis=0)
@@ -163,9 +163,9 @@ def main():
         I = np.array([float(args.I)])
     except:
         if ',' in args.I:
-            I = np.sort(np.array(map(lambda x: float(x), args.I.split(','))))
+            I = np.sort(np.array([float(x) for x in args.I.split(',')]))
         elif ':' in args.I:
-            tmp = np.array(map(lambda x: float(x), args.I.split(':')))
+            tmp = np.array([float(x) for x in args.I.split(':')])
             I = np.arange(tmp[0],tmp[1]+tmp[2]/2,tmp[2])
         else:
             print('Unknown current definition: %s.' % args.I)
