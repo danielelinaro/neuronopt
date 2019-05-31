@@ -16,7 +16,7 @@ def get_responses(evaluator, individuals, filename=None):
         responses.append(evaluator.run_protocols(protocols=evaluator.fitness_protocols.values(),
                                                  param_values=evaluator.param_dict(individual)))
     if not filename is None:
-        pickle.dump(responses,open(filename,'w'))
+        pickle.dump(responses,open(filename,'wb'))
 
     return responses
 
@@ -110,13 +110,13 @@ def main():
     responses = get_responses(evaluator, hall_of_fame, output_folder+'/hall_of_fame_responses.pkl')
 
     #### save everything
-    pickle.dump(hall_of_fame, open(output_folder+'/hall_of_fame.pkl','w'))
-    pickle.dump(final_pop, open(output_folder+'/final_population.pkl','w'))
-    pickle.dump(evaluator, open(output_folder+'/evaluator.pkl','w'))
-    pickle.dump(logbook, open(output_folder+'/logbook.pkl','w'))
-    pickle.dump(history, open(output_folder+'/history.pkl','w'))
+    pickle.dump(hall_of_fame, open(output_folder+'/hall_of_fame.pkl','wb'))
+    pickle.dump(final_pop, open(output_folder+'/final_population.pkl','wb'))
+    pickle.dump(evaluator, open(output_folder+'/evaluator.pkl','wb'))
+    pickle.dump(logbook, open(output_folder+'/logbook.pkl','wb'))
+    pickle.dump(history, open(output_folder+'/history.pkl','wb'))
     pickle.dump({'seed': seed, 'replace_axon': args.replace_axon}, 
-                open(output_folder+'/simulation_parameters.pkl','w'))
+                open(output_folder+'/simulation_parameters.pkl','wb'))
 
 if __name__ == '__main__':
     main()

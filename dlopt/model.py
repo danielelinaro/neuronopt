@@ -180,7 +180,6 @@ def define_mechanisms_v2(config_dir, parameters_file, etype):
                 locations=seclist_locs,
                 preloaded=True))
 
-    print(mechanisms)
     return mechanisms
 
 
