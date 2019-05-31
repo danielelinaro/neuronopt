@@ -99,7 +99,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
             'params_file': params_file, 'distr_name': distr_name, 'mu': mu, 'sigma': sigma, \
             'scaling': scaling, 'slm_border': slm_border, 'hist': hist, 'binwidth': binwidth, \
             'edges': edges, 'popt': popt}
-    pickle.dump(data,open(output_dir + '/' + filename + '.pkl','w'))
+    pickle.dump(data,open(output_dir + '/' + filename + '.pkl','wb'))
 
 
 ############################################################
@@ -160,7 +160,7 @@ def plot():
         print('%s: %s: no such file.' % (progname,f_in))
         sys.exit(0)
 
-    data = pickle.load(open(f_in,'r'))
+    data = pickle.load(open(f_in,'rb'))
 
     fix = False
     if fix:
@@ -175,7 +175,7 @@ def plot():
         else:
             p0 = [np.mean(np.log(data['EPSP_amplitudes'])),np.std(np.log(data['EPSP_amplitudes']))]
             data['popt'],pcov = curve_fit(lognormal,x,data['hist'],p0)
-        pickle.dump(data,open(f_in,'w'))
+        pickle.dump(data,open(f_in,'wb'))
 
     if args.output is None:
         f_out = f_in.split('.pkl')[0] + '.pdf'

@@ -99,7 +99,7 @@ def main():
     
     step = {'I': args.I, 'time': np.array(rec['t']), 'voltage': np.array(rec['Vsoma']), 'spike_times': np.array(rec['spike_times'])}
 
-    pickle.dump(step, open(args.output,'w'))
+    pickle.dump(step, open(args.output,'wb'))
 
 
 if __name__ == '__main__':

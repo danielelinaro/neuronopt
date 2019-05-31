@@ -128,7 +128,7 @@ def write_features():
     amplitudes = []
     features = []
     for f in args.files:
-        data = pickle.load(open(f,'r'))
+        data = pickle.load(open(f,'rb'))
         stim_dur = data['stim_dur']
         stim_start = data['stim_start']
         features.append(data['features'])
@@ -240,7 +240,7 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out):
     features = efel.getFeatureValues(traces,feature_names_full_set)
     data = {'features': features, 'current_amplitudes': amplitudes, \
             'stim_dur': stim_dur, 'stim_start': stim_start}
-    pickle.dump(data,open(file_out,'w'))
+    pickle.dump(data,open(file_out,'wb'))
 
 
 def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
@@ -293,7 +293,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         features = [features[jdx] for jdx in idx]
         data = {'features': features, 'current_amplitudes': amplitudes, \
                 'stim_dur': stim_dur, 'stim_start': stim_start}
-        pickle.dump(data,open(files_out[0],'w'))
+        pickle.dump(data,open(files_out[0],'wb'))
     else:
         if len(files_out) == 0:
             files_out = [x+'.pkl' for x in files_in]
@@ -301,7 +301,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
             raise Exception('There must be as many input as output files')
         for f_in,f_out in zip(files_in,files_out):
             feat,_ = extract_features_from_file(f_in)
-            pickle.dump(feat,open(f_out,'w'))
+            pickle.dump(feat,open(f_out,'wb'))
 
     if not quiet:
         print('-------------------------------------------------------')

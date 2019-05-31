@@ -21,8 +21,8 @@ def plot_means_with_sem(x,y,color='k',label=''):
 def compute_fI_curve_hall_of_fame(I, swc_file, mech_file, hof_file='hall_of_fame.pkl', \
                                   evaluator_file='evaluator.pkl', parameters_file='parameters.json',\
                                   delay=500., dur=2000., tran=200.):
-    hall_of_fame = pickle.load(open(hof_file,'r'))
-    evaluator = pickle.load(open(evaluator_file,'r'))
+    hall_of_fame = pickle.load(open(hof_file,'rb'))
+    evaluator = pickle.load(open(evaluator_file,'rb'))
     parameters_files = []
     for i,individual in enumerate(hall_of_fame):
         parameters = json.load(open(parameters_file,'r'))

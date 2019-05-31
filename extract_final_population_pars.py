@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 
-pop = pickle.load(open('final_population.pkl','r'))
-evaluator = pickle.load(open('evaluator.pkl','r'))
+pop = pickle.load(open('final_population.pkl','rb'))
+evaluator = pickle.load(open('evaluator.pkl','rb'))
 
 with open('final_population.csv','w') as fid:
     for i,name in enumerate(evaluator.param_names):
