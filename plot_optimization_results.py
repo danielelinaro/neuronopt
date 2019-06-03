@@ -24,7 +24,10 @@ files = {'results': {'hof_resp': 'hall_of_fame_responses.pkl',
 def load_files():
     parameters = json.load(open(files['config']['params'],'r'))
     features = json.load(open(files['config']['features'],'r'))
-    mechanisms = json.load(open(files['config']['mechanisms'],'r'))
+    try:
+        mechanisms = json.load(open(files['config']['mechanisms'],'r'))
+    except:
+        mechanisms = None
     
     hall_of_fame = np.array(pickle.load(open(files['results']['hof'],'rb'),encoding='latin1'))
     final_pop = np.array(pickle.load(open(files['results']['final_pop'],'rb'),encoding='latin1'))
@@ -34,7 +37,7 @@ def load_files():
     return parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses
 
 
-def write_optimal_parameters(parameters,hall_of_fame,evaluator):
+def write_optimal_parameters_v1(parameters,hall_of_fame,evaluator):
     for i,individual in enumerate(hall_of_fame):
         param_dict = evaluator.param_dict(individual)
         parameters_copy = [p.copy() for p in parameters]
@@ -43,6 +46,50 @@ def write_optimal_parameters(parameters,hall_of_fame,evaluator):
                 par['value'] = param_dict[par['param_name'] + '.' + par['sectionlist']]
                 par.pop('bounds')
         json.dump(parameters_copy,open('individual_%d.json'%i,'w'),indent=4)
+
+
+def write_optimal_parameters_v2(config,hall_of_fame,evaluator):
+    for i,individual in enumerate(hall_of_fame):
+        param_dict = evaluator.param_dict(individual)
+        parameters = []
+        for param_type,params in config['fixed'].items():
+            if param_type == 'global':
+                for par in params:
+                    parameters.append({'name': par[0], 'value': par[1], 'type': 'global'})
+            elif param_type == 'all':
+                for par in params:
+                    param = {'name': par[0], 'value': par[1], 'type': 'section',
+                             'dist_type': 'uniform', 'section_list': 'all'}
+                    if par[2] != 'secvar':
+                        print('I do not know how to deal with a fixed parameter of dist_type "{}".'.format(par[2]))
+                        import ipdb
+                        ipdb.set_trace()
+                    parameters.append(param)
+        for section_list,params in config['optimized'].items():
+            for par in params:
+                param_name = par[0]
+                value = param_dict[par[0] + '.' + section_list]
+                dist_type = par[3]
+                param = {'param_name': param_name,
+                         'section_list': section_list,
+                         'value': value}
+
+                if param_name in ('g_pas','e_pas','cm','Ra'):
+                    param['type'] = 'section'
+                else:
+                    param['mech'] = param_name.split('_')[-1]
+                    param['mech_param'] = '_'.join(param_name.split('_')[:-1])
+                    param['type'] = 'range'
+
+                if dist_type == 'secvar':
+                    dist_type = 'uniform'
+                elif dist_type != 'uniform':
+                    param['dist'] = config['distributions'][dist_type]
+                    dist_type = dist_type.split('_')[0]
+
+                param['dist_type'] = dist_type
+                parameters.append(param)
+        json.dump(parameters,open('individual_%d.json'%i,'w'),indent=4)
 
 
 def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0,dump=False):
@@ -199,7 +246,12 @@ def main():
     args = parser.parse_args(args=sys.argv[1:])
 
     parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses = load_files()
-    write_optimal_parameters(parameters,hall_of_fame,evaluator)
+
+    if mechanisms is not None:
+        write_optimal_parameters_v1(parameters,hall_of_fame,evaluator)
+    else:
+        cell_name = '_'.join(os.path.split(os.path.abspath('.'))[1].split('_')[1:])
+        write_optimal_parameters_v2(parameters[cell_name], hall_of_fame, evaluator)
 
     if args.all:
         individuals = list(range(len(responses)))
