@@ -26,12 +26,24 @@ feature_names_full_set = ['AP_amplitude','AP_begin_voltage','spike_half_width',
                           'AP_rise_rate','AP_fall_rate','AP_amplitude_change',
                           'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
                           'AP_duration_half_width_change','amp_drop_first_second',
-                          'mean_frequency','AP_height','AP_width','AHP_depth_abs']
+                          'mean_frequency','AP_height','AP_width','AHP_depth_abs',
+                          'voltage_base', 'steady_state_voltage',
+                          'voltage_deflection', 'voltage_deflection_begin',
+                          'Spikecount', 'time_to_last_spike',
+                          'inv_time_to_first_spike', 'inv_first_ISI',
+                          'inv_second_ISI', 'inv_third_ISI', 'inv_fourth_ISI',
+                          'inv_fifth_ISI', 'inv_last_ISI']
 
-feature_names = {'BBP': ['AP_height', 'AHP_slow_time', 'ISI_CV',
+feature_names = {'BBP_CTX': ['AP_height', 'AHP_slow_time', 'ISI_CV',
                          'doublet_ISI','AHP_depth_abs_slow',
                          'AP_width','time_to_first_spike','AHP_depth_abs',
                          'adaptation_index2','mean_frequency'],
+                 'BBP_HPC': ['voltage_base', 'steady_state_voltage',
+                             'voltage_deflection', 'voltage_deflection_begin',
+                             'Spikecount', 'time_to_last_spike',
+                             'inv_time_to_first_spike', 'inv_first_ISI',
+                             'inv_second_ISI', 'inv_third_ISI', 'inv_fourth_ISI',
+                             'inv_fifth_ISI', 'inv_last_ISI'],
                  'RS-01': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                            'time_to_first_spike','adaptation_index2',
                            'ISI_values','ISI_CV','doublet_ISI',
@@ -79,8 +91,8 @@ def write_features():
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
-    parser.add_argument('--cell-type', default='BBP',
-                        help='feature set to use (default: "BBP")')
+    parser.add_argument('--cell-type', default='BBP_HPC',
+                        help='feature set to use (default: "BBP_HPC")')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -419,7 +431,7 @@ def extract_features():
                         amp = float(p.split('=')[1])*info['multiplier'][i]*1e-3
                 if not info['sweep_index'][i] in sweeps_to_ignore and dur == args.stim_dur and amp > 0:
                     print('[%02d] dur=%g ms, amp=%g nA' % (info['sweep_index'][i],dur,amp))
-                    files_in.append('ad0_%d.ibw' % info['sweep_index'][i])
+                    files_in.append('%s/ad0_%d.ibw' % (folder,info['sweep_index'][i]))
                     current_amplitudes.append(amp)
     elif mode == 'cortex':
         files_in = [filename]
