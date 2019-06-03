@@ -100,6 +100,8 @@ def write_features():
                         help='suffix for the output file names (default: no suffix)')
     parser.add_argument('--cell-type', default='CA3',
                         help='feature set to use (default: "CA3")')
+    parser.add_argument('--cell-type', default='BBP_HPC',
+                        help='feature set to use (default: "BBP_HPC")')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -438,7 +440,7 @@ def extract_features():
                         amp = float(p.split('=')[1])*info['multiplier'][i]*1e-3
                 if not info['sweep_index'][i] in sweeps_to_ignore and dur == args.stim_dur and amp > 0:
                     print('[%02d] dur=%g ms, amp=%g nA' % (info['sweep_index'][i],dur,amp))
-                    files_in.append('ad0_%d.ibw' % info['sweep_index'][i])
+                    files_in.append('%s/ad0_%d.ibw' % (folder,info['sweep_index'][i]))
                     current_amplitudes.append(amp)
     elif mode == 'cortex':
         files_in = [filename]
