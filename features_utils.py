@@ -26,12 +26,31 @@ feature_names_full_set = ['AP_amplitude','AP_begin_voltage','spike_half_width',
                           'AP_rise_rate','AP_fall_rate','AP_amplitude_change',
                           'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
                           'AP_duration_half_width_change','amp_drop_first_second',
-                          'mean_frequency','AP_height','AP_width','AHP_depth_abs']
+                          'mean_frequency','AP_height','AP_width','AHP_depth_abs',
+                          'voltage_base', 'steady_state_voltage',
+                          'voltage_deflection', 'voltage_deflection_begin',
+                          'Spikecount', 'time_to_last_spike',
+                          'inv_time_to_first_spike', 'inv_first_ISI',
+                          'inv_second_ISI', 'inv_third_ISI', 'inv_fourth_ISI',
+                          'inv_fifth_ISI', 'inv_last_ISI']
 
-feature_names = {'BBP': ['AP_height', 'AHP_slow_time', 'ISI_CV',
-                         'doublet_ISI','AHP_depth_abs_slow',
-                         'AP_width','time_to_first_spike','AHP_depth_abs',
-                         'adaptation_index2','mean_frequency'],
+feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                         'AP_fall_rate','AP_rise_rate','AHP_slow_time',
+                         'voltage_base','ISI_CV'
+                         'Spikecount', 'time_to_last_spike',
+                         'inv_time_to_first_spike', 'inv_first_ISI',
+                         'inv_second_ISI', 'inv_third_ISI', 'inv_fourth_ISI',
+                         'inv_fifth_ISI', 'inv_last_ISI'],
+                 'BBP_CTX': ['AP_height', 'AHP_slow_time', 'ISI_CV',
+                             'doublet_ISI','AHP_depth_abs_slow',
+                             'AP_width','time_to_first_spike','AHP_depth_abs',
+                             'adaptation_index2','mean_frequency'],
+                 'BBP_HPC': ['voltage_base', 'steady_state_voltage',
+                             'voltage_deflection', 'voltage_deflection_begin',
+                             'Spikecount', 'time_to_last_spike',
+                             'inv_time_to_first_spike', 'inv_first_ISI',
+                             'inv_second_ISI', 'inv_third_ISI', 'inv_fourth_ISI',
+                             'inv_fifth_ISI', 'inv_last_ISI'],
                  'RS-01': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                            'time_to_first_spike','adaptation_index2',
                            'ISI_values','ISI_CV','doublet_ISI',
@@ -79,8 +98,8 @@ def write_features():
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
-    parser.add_argument('--cell-type', default='BBP',
-                        help='feature set to use (default: "BBP")')
+    parser.add_argument('--cell-type', default='CA3',
+                        help='feature set to use (default: "CA3")')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -254,14 +273,14 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
         voltage = voltage.T
     time = np.arange(voltage.shape[1]) / sampling_rate
 
-    idx, = np.where((time>stim_start) & (time<=stim_end))
+    idx, = np.where((time>0.25*stim_start) & (time<=2*stim_end))
     traces = [{'T': time[idx], 'V': sweep[idx], 'stim_start': [stim_start], 'stim_end': [stim_end]} \
               for sweep in voltage]
     voltage_range = [np.min(voltage),np.max(voltage)]
     recording_dur = time[-1]
 
     if voltage_range[0] > -100 and (voltage_range[1] > efel.Settings().threshold and voltage_range[1] < 100):
-        plt.plot(time,voltage.T,lw=1)
+        plt.plot(time[idx],voltage[:,idx].T,lw=1)
 
     return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
 
