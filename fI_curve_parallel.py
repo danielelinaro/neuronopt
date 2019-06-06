@@ -1,6 +1,4 @@
 
-
-
 import os
 import sys
 import json
@@ -22,6 +20,7 @@ if use_scoop:
         map_fun = map
 else:
     map_fun = map
+
 
 def params_files_from_pickle(pkl_file, parameters_file='parameters.json', evaluator_file='evaluator.pkl'):
 
@@ -67,6 +66,7 @@ if __name__ == '__main__':
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
     parser.add_argument('--tran', default=200., type=float, help='transient to be discard after stimulation onset (default: 200 ms)')
+    parser.add_argument('--cell-name', default='', type=str, help='cell name, if the mechanisms are stored in new style format')
     args = parser.parse_args(args=sys.argv[1:])
 
     try:
@@ -81,9 +81,13 @@ if __name__ == '__main__':
             print('Unknown current definition: %s.' % args.I)
             sys.exit(1)
 
-    params_files = args.params_files.split(',')
-    if params_files[0][-3:] == 'pkl':
-        params_files = params_files_from_pickle(params_files[0])
+    if '*' in args.params_files:
+        import glob
+        params_files = glob.glob(args.params_files)
+    elif params_files[-3:] == 'pkl':
+        params_files = params_files_from_pickle(args.params_files)
+    else:
+        params_files = args.params_files.split(',')
 
     dur = args.dur
     delay = args.delay
@@ -96,9 +100,23 @@ if __name__ == '__main__':
     inverse_last_isi = np.zeros((N,len(I)))
     spike_times = []
 
+    if args.cell_name != '':
+        mech_file = '/tmp/mechanisms.json'
+        config = json.load(open(args.mech_file,'rb'))
+        mechs = {}
+        for k,v in config[args.cell_name]["mechanisms"].items():
+            if k == 'alldend':
+                mechs['apical'] = v
+                mechs['basal'] = v
+            else:
+                mechs[k] = v
+        json.dump(mechs, open(mech_file,'w'), indent=4)
+    else:
+        mech_file = args.mech_file
+
     for i,params_file in enumerate(params_files):
 
-        worker = lambda Idc: inject_current_step(Idc, args.swc_file, args.mech_file,
+        worker = lambda Idc: inject_current_step(Idc, args.swc_file, mech_file,
                                                  params_file, delay, dur,
                                                  None, neuron, False, True)
 

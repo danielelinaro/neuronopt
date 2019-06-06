@@ -55,11 +55,11 @@ def write_optimal_parameters_v2(config,hall_of_fame,evaluator):
         for param_type,params in config['fixed'].items():
             if param_type == 'global':
                 for par in params:
-                    parameters.append({'name': par[0], 'value': par[1], 'type': 'global'})
+                    parameters.append({'param_name': par[0], 'value': par[1], 'type': 'global'})
             elif param_type == 'all':
                 for par in params:
-                    param = {'name': par[0], 'value': par[1], 'type': 'section',
-                             'dist_type': 'uniform', 'section_list': 'all'}
+                    param = {'param_name': par[0], 'value': par[1], 'type': 'section',
+                             'dist_type': 'uniform', 'sectionlist': 'all'}
                     if par[2] != 'secvar':
                         print('I do not know how to deal with a fixed parameter of dist_type "{}".'.format(par[2]))
                         import ipdb
@@ -71,7 +71,7 @@ def write_optimal_parameters_v2(config,hall_of_fame,evaluator):
                 value = param_dict[par[0] + '.' + section_list]
                 dist_type = par[3]
                 param = {'param_name': param_name,
-                         'section_list': section_list,
+                         'sectionlist': section_list,
                          'value': value}
 
                 if param_name in ('g_pas','e_pas','cm','Ra'):
@@ -88,7 +88,17 @@ def write_optimal_parameters_v2(config,hall_of_fame,evaluator):
                     dist_type = dist_type.split('_')[0]
 
                 param['dist_type'] = dist_type
-                parameters.append(param)
+
+                if param['sectionlist'] == 'allnoaxon':
+                    for seclist in ('somatic','apical','basal'):
+                        param['sectionlist'] = seclist
+                        parameters.append(param.copy())
+                elif param['sectionlist'] == 'alldend':
+                    for seclist in ('apical','basal'):
+                        param['sectionlist'] = seclist
+                        parameters.append(param.copy())
+                else:
+                    parameters.append(param)
         json.dump(parameters,open('individual_%d.json'%i,'w'),indent=4)
 
 

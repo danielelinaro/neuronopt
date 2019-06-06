@@ -36,11 +36,10 @@ feature_names_full_set = ['AP_amplitude','AP_begin_voltage','spike_half_width',
 
 feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                          'AP_fall_rate','AP_rise_rate','AHP_slow_time',
-                         'voltage_base','ISI_CV'
-                         'Spikecount', 'time_to_last_spike',
-                         'inv_time_to_first_spike', 'inv_first_ISI',
-                         'inv_second_ISI', 'inv_third_ISI', 'inv_fourth_ISI',
-                         'inv_fifth_ISI', 'inv_last_ISI'],
+                         'voltage_base','steady_state_voltage',
+                         'ISI_CV','Spikecount','doublet_ISI',
+                         'time_to_first_spike','adaptation_index2',
+                         'ISI_values'],
                  'BBP_CTX': ['AP_height', 'AHP_slow_time', 'ISI_CV',
                              'doublet_ISI','AHP_depth_abs_slow',
                              'AP_width','time_to_first_spike','AHP_depth_abs',
@@ -98,8 +97,8 @@ def write_features():
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
-    parser.add_argument('--cell-type', default='BBP_HPC',
-                        help='feature set to use (default: "BBP_HPC")')
+    parser.add_argument('--cell-type', default='CA3',
+                        help='feature set to use (default: "CA3")')
 
     args = parser.parse_args(args=sys.argv[2:])
 

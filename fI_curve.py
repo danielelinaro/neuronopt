@@ -152,6 +152,7 @@ def main():
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
     parser.add_argument('--tran', default=200., type=float, help='transient to be discard after stimulation onset (default: 200 ms)')
+    parser.add_argument('--cell-name', default='', type=str, help='cell name, if the mechanisms are stored in new style format')
     args = parser.parse_args(args=sys.argv[1:])
 
     if args.hall_of_fame and not args.params_files is None:
@@ -171,18 +172,32 @@ def main():
             print('Unknown current definition: %s.' % args.I)
             sys.exit(1)
 
+    if args.cell_name != '':
+        mech_file = '/tmp/mechanisms.json'
+        config = json.load(open(args.mech_file,'rb'))
+        mechs = {}
+        for k,v in config[args.cell_name]["mechanisms"].items():
+            if k == 'alldend':
+                mechs['apical'] = v
+                mechs['basal'] = v
+            else:
+                mechs[k] = v
+        json.dump(mechs, open(mech_file,'w'), indent=4)
+    else:
+        mech_file = args.mech_file
+
     if args.hall_of_fame:
-        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve_hall_of_fame(I*1e-3, args.swc_file, args.mech_file, \
+        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve_hall_of_fame(I*1e-3, args.swc_file, mech_file, \
                                                                                        delay=args.delay, dur=args.dur, \
                                                                                        tran=args.tran)
         suffix = 'hall_of_fame'
     elif len(params_files) > 1:
-        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curves(I*1e-3, args.swc_file, args.mech_file, \
+        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curves(I*1e-3, args.swc_file, mech_file, \
                                                                            params_files, args.delay, args.dur, args.tran)
         suffix = make_suffix(params_files)
     else:
         params_files = params_files[0]
-        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, args.mech_file, \
+        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, mech_file, \
                                                                           params_files, args.delay, args.dur, \
                                                                           args.tran, 'MyCell', do_plot=True)
         suffix = params_files.split('.')[0]
