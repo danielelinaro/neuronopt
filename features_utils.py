@@ -98,8 +98,6 @@ def write_features():
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
-    parser.add_argument('--cell-type', default='CA3',
-                        help='feature set to use (default: "CA3")')
     parser.add_argument('--cell-type', default='BBP_HPC',
                         help='feature set to use (default: "BBP_HPC")')
 
