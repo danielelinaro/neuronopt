@@ -39,7 +39,8 @@ feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                          'voltage_base','steady_state_voltage',
                          'ISI_CV','Spikecount','doublet_ISI',
                          'time_to_first_spike','adaptation_index2',
-                         'ISI_values'],
+                         'ISI_values','AHP_depth_abs_slow','fast_AHP',
+                         'min_AHP_values'],
                  'BBP_CTX': ['AP_height', 'AHP_slow_time', 'ISI_CV',
                              'doublet_ISI','AHP_depth_abs_slow',
                              'AP_width','time_to_first_spike','AHP_depth_abs',
@@ -99,6 +100,9 @@ def write_features():
                         help='suffix for the output file names (default: no suffix)')
     parser.add_argument('--cell-type', default='CA3',
                         help='feature set to use (default: "CA3")')
+    parser.add_argument('--stim-start', default=None, type=float, help='delay before application of the stimulus')
+    parser.add_argument('--stim-dur', default=None, type=float, help='duration of the stimulus')
+    parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -143,6 +147,18 @@ def write_features():
               (args.cell_type,'", "'.join(feature_names.keys())))
         sys.exit(1)
 
+    if args.stim_start is not None and args.stim_start < 0:
+        print('Time before stimulus must be greater than 0.')
+        sys.exit(1)
+
+    if args.stim_dur is not None and args.stim_dur < 0:
+        print('Stimulus duration must be greater than 0.')
+        sys.exit(1)
+
+    if args.after < 0:
+        print('Time after stimulus must be greater than 0.')
+        sys.exit(1)
+
     amplitudes = []
     features = []
     for f in args.files:
@@ -151,6 +167,11 @@ def write_features():
         stim_start = data['stim_start']
         features.append(data['features'])
         amplitudes.append(data['current_amplitudes'])
+
+    if args.stim_start is not None:
+        stim_start = args.stim_start
+    if args.stim_dur is not None:
+        stim_dur = args.stim_dur
 
     if desired_amps is None:
         desired_amps = np.zeros((len(amplitudes),nsteps))
@@ -177,7 +198,7 @@ def write_features():
         stepnum = 'Step%d'%(i+1)
         protocols_dict[stepnum] = {'stimuli': [{
             'delay': stim_start, 'amp': np.round(np.mean(desired_amps[:,i])/args.round_amp)*args.round_amp,
-            'duration': stim_dur, 'totduration': stim_dur+2*stim_start}]}
+            'duration': stim_dur, 'totduration': stim_dur+stim_start+args.after}]}
 
     flatten = lambda l: [item for sublist in l for item in sublist]
 
