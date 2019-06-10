@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from neuron import h
 import cell_utils as cu
+from utils import *
 import pickle
 import json
 
@@ -18,55 +19,31 @@ def plot_means_with_sem(x,y,color='k',label=''):
     plt.plot(x,Ym,'o-',color=color,lw=1,label=label)
 
 
-def compute_fI_curve_hall_of_fame(I, swc_file, mech_file, hof_file='hall_of_fame.pkl', \
-                                  evaluator_file='evaluator.pkl', parameters_file='parameters.json',\
-                                  delay=500., dur=2000., tran=200.):
-    hall_of_fame = pickle.load(open(hof_file,'rb'))
-    evaluator = pickle.load(open(evaluator_file,'rb'))
-    parameters_files = []
-    for i,individual in enumerate(hall_of_fame):
-        parameters = json.load(open(parameters_file,'r'))
-        param_dict = evaluator.param_dict(individual)
-        for par in parameters:
-            if 'value' not in par:
-                par['value'] = param_dict[par['param_name'] + '.' + par['sectionlist']]
-                par.pop('bounds')
-        params_file = 'individual_%d.json' % i
-        json.dump(parameters,open(params_file,'w'),indent=4)
-        parameters_files.append(params_file)
-    return compute_fI_curves(I, swc_file, mech_file, parameters_files, delay, dur, tran, 'hall_of_fame')
-
-
-def compute_fI_curves(I, swc_file, mech_file, parameters_files, delay=500., dur=2000., tran=200., suffix=None):
-    if suffix is None:
-        suffix = make_suffix(parameters_files)
-    N = len(parameters_files)
+def compute_fI_curves(I, swc_file, parameters, mechanisms, delay=500., dur=2000., tran=200., do_plot=True):
+    N = len(parameters)
     f = np.zeros((N,len(I)))
     no_spikes = np.zeros((N,len(I)))
     inverse_first_isi = np.zeros((N,len(I)))
     inverse_last_isi = np.zeros((N,len(I)))
-    for i,params_file in enumerate(parameters_files):
+    for i,params in enumerate(parameters):
         f[i,:],no_spikes[i,:],inverse_first_isi[i,:],inverse_last_isi[i,:] = \
-                compute_fI_curve(I, swc_file, mech_file, params_file, delay, dur, tran, cell_name='individual_%d'%i, do_plot=False)
+                compute_fI_curve(I, swc_file, params, mechanisms, delay, dur, tran, cell_name='individual_%d'%i, do_plot=False)
 
-    plt.figure()
-    plot_means_with_sem(I,no_spikes,color='r',label='All spikes')
-    plot_means_with_sem(I,f,color='k',label='With transient removed')
-    plot_means_with_sem(I,inverse_first_isi,color='b',label='Inverse first ISI')
-    plot_means_with_sem(I,inverse_last_isi,color='m',label='Inverse last ISI')
-    plt.xlabel('Current (nA)')
-    plt.ylabel(r'$f$ (spikes/s)')
-    plt.legend(loc='best')
-    plt.savefig('fI_curve_%s.pdf' % suffix)
-    plt.show()
+    if do_plot:
+        plot_means_with_sem(I,no_spikes,color='r',label='All spikes')
+        plot_means_with_sem(I,f,color='k',label='With transient removed')
+        plot_means_with_sem(I,inverse_first_isi,color='b',label='Inverse first ISI')
+        plot_means_with_sem(I,inverse_last_isi,color='m',label='Inverse last ISI')
+        plt.xlabel('Current (nA)')
+        plt.ylabel(r'$f$ (spikes/s)')
+        plt.legend(loc='best')
 
     return f,no_spikes,inverse_first_isi,inverse_last_isi
 
 
-def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000., tran=200., cell_name='MyCell', do_plot=False):
-    cell = cu.Cell(cell_name,{'morphology': swc_file,
-                              'mechanisms': mech_file,
-                              'parameters': params_file})
+def compute_fI_curve(I, swc_file, parameters, mechanisms, delay=500., dur=2000., tran=200., cell_name='MyCell', do_plot=False):
+
+    cell = cu.Cell(cell_name, swc_file, parameters, mechanisms)
     cell.instantiate()
 
     stim = h.IClamp(cell.morpho.soma[0](0.5))
@@ -108,19 +85,6 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
         h.t = 0
         h.run()
         spike_times.append(np.array(recorders['spike_times']))
-        if do_plot and len(I) == 1:
-            plt.figure()
-            t = np.array(recorders['t'])
-            try:
-                plt.plot(t,recorders['Vaxon'],'r',label='Axon')
-            except:
-                pass
-            plt.plot(t,recorders['Vbasal'],'g',label='Basal')
-            plt.plot(t,recorders['Vapic'],'b',label='Apical')
-            plt.plot(t,recorders['Vsoma'],'k',label='Soma')
-            plt.legend(loc='best')
-            plt.ylabel(r'$V_m$ (mV)')
-            plt.xlabel('Time (ms)')
 
     no_spikes = np.array([x.shape[0]/dur*1e3 for x in spike_times])
     f = np.array([len(x[(x>delay+tran) & (x<delay+dur)])/(dur-tran)*1e3 for x in spike_times])
@@ -128,7 +92,6 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
     inverse_last_isi = np.array([1e3/np.diff(t[-2:]) if len(t) > 1 else 0 for t in spike_times]).squeeze()
 
     if do_plot:
-        plt.figure()
         plt.plot(I,no_spikes,'ro-',label='All spikes')
         plt.plot(I,f,'ko-',label='With transient removed')
         plt.plot(I,inverse_first_isi,'bo-',label='Inverse first ISI')
@@ -136,8 +99,6 @@ def compute_fI_curve(I, swc_file, mech_file, params_file, delay=500., dur=2000.,
         plt.xlabel('Current (nA)')
         plt.ylabel(r'$f$ (spikes/s)')
         plt.legend(loc='best')
-        plt.savefig('fI_curve_' + params_file.split('.')[0] + '.pdf')
-        plt.show()
 
     return f,no_spikes,inverse_first_isi,inverse_last_isi
 
@@ -146,19 +107,33 @@ def main():
     parser = arg.ArgumentParser(description='Compute the f-I curve of a neuron model.')
     parser.add_argument('I', type=str, action='store', help='current values in pA, either comma separated or interval and steps, as in 100:300:50')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
-    parser.add_argument('-p','--params-files', type=str, help='JSON file(s) containing the parameters of the model (comma separated)')
+    parser.add_argument('-p','--params-files', type=str, default=None,
+                        help='JSON file containing the parameters of the model')
+    parser.add_argument('-m','--mech-file', type=str, default=None,
+                        help='JSON file containing the mechanisms to be inserted into the cell')
+    parser.add_argument('-c','--config-file', type=str, default=None,
+                        help='JSON file containing the configuration of the model')
+    parser.add_argument('-n','--cell-name', type=str, default=None,
+                        help='name of the cell as it appears in the configuration file')
     parser.add_argument('--hall-of-fame', action='store_true', help='compute population f-I curve')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
     parser.add_argument('--tran', default=200., type=float, help='transient to be discard after stimulation onset (default: 200 ms)')
-    parser.add_argument('--cell-name', default='', type=str, help='cell name, if the mechanisms are stored in new style format')
     args = parser.parse_args(args=sys.argv[1:])
 
-    if args.hall_of_fame and not args.params_files is None:
-        print('--hall-of-fame option has precedence over -p: ignoring parameters files %s.' % args.params_files)
-    elif not args.hall_of_fame:
-        params_files = args.params_files.split(',')
+    if args.mech_file is not None and args.config_file is not None:
+        print('--mech-file and --config-file cannot both be present.')
+        sys.exit(1)
+
+    if args.config_file is not None and args.cell_name is None:
+        print('You must specify --cell-name with --config-file.')
+        sys.exit(1)
+
+    if args.config_file is not None or args.cell_name is not None:
+        import utils
+        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+    else:
+        mechanisms = json.load(open(args.mech_file,'r'))
 
     try:
         I = np.array([float(args.I)])
@@ -172,35 +147,46 @@ def main():
             print('Unknown current definition: %s.' % args.I)
             sys.exit(1)
 
-    if args.cell_name != '':
-        mech_file = '/tmp/mechanisms.json'
-        config = json.load(open(args.mech_file,'rb'))
-        mechs = {}
-        for k,v in config[args.cell_name]["mechanisms"].items():
-            if k == 'alldend':
-                mechs['apical'] = v
-                mechs['basal'] = v
-            else:
-                mechs[k] = v
-        json.dump(mechs, open(mech_file,'w'), indent=4)
-    else:
-        mech_file = args.mech_file
+    params_files = None
+    if args.params_files is not None:
+        params_files = args.params_files.split(',')
 
     if args.hall_of_fame:
-        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve_hall_of_fame(I*1e-3, args.swc_file, mech_file, \
-                                                                                       delay=args.delay, dur=args.dur, \
-                                                                                       tran=args.tran)
+        hall_of_fame = pickle.load(open('hall_of_fame.pkl','rb'))
+        evaluator = pickle.load(open('evaluator.pkl','rb'))
+        if args.config_file is not None:
+            config = json.load(open(args.config_file,'r'))[args.cell_name]
+            default_parameters = None
+        elif params_files is not None:
+            config = None
+            default_parameters = json.load(open(params_files[0],'r'))
+        else:
+            print('If you do not specify a configuration file, the option --params-files ' + \
+                  'indicates the name of the file where the default parameters are stored.')
+            sys.exit(0)
+        parameters = build_parameters_dict(hall_of_fame, evaluator, config, default_parameters)
         suffix = 'hall_of_fame'
-    elif len(params_files) > 1:
-        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curves(I*1e-3, args.swc_file, mech_file, \
-                                                                           params_files, args.delay, args.dur, args.tran)
-        suffix = make_suffix(params_files)
     else:
-        params_files = params_files[0]
-        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, mech_file, \
-                                                                          params_files, args.delay, args.dur, \
+        parameters = [json.load(open(f,'r')) for f in params_files]
+
+    plt.figure()
+    if len(parameters) > 1:
+        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curves(I*1e-3, args.swc_file, parameters, mechanisms, \
+                                                                           args.delay, args.dur, args.tran, True)
+        if args.hall_of_fame:
+            suffix = 'hall_of_fame'
+        else:
+            suffix = make_suffix(params_files)
+    else:
+        f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, parameters[0], \
+                                                                          mechanisms, args.delay, args.dur, \
                                                                           args.tran, 'MyCell', do_plot=True)
-        suffix = params_files.split('.')[0]
+        suffix = params_files[0].split('.')[0]
+
+    import ipdb
+    ipdb.set_trace()
+    plt.savefig('fI_curve_%s.pdf' % suffix)
+    plt.show()
 
     fI_curve = {'I': I, 'f': f,
                 'no_spikes': no_spikes,

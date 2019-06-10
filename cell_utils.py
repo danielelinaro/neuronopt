@@ -112,14 +112,11 @@ class Cell (object):
         morpho.axon[0].connect(morpho.soma[0], 1.0, 0.0)
         morpho.axon[1].connect(morpho.axon[0], 1.0, 0.0)
 
-
-    def __init__(self, cell_name, config_files, set_nseg=True, replace_axon=False):
-        defaults = {'mechanisms': 'mechanisms.json','parameters': 'parameters.json'}
+    def __init__(self, cell_name, morpho_file, parameters, mechanisms, set_nseg=True, replace_axon=False):
         self.cell_name = cell_name
-        self.config_files = config_files
-        for k,v in defaults.items():
-            if k not in self.config_files:
-                self.config_files[k] = v
+        self.morpho_file = morpho_file
+        self.parameters = parameters
+        self.mechanisms = mechanisms
         self.seclist_names = ['all', 'somatic', 'basal', 'apical', 'axonal', 'myelinated']
         self.secarray_names = ['soma', 'dend', 'apic', 'axon', 'myelin']
         self.has_axon = True
@@ -135,7 +132,7 @@ class Cell (object):
         h.load_file('import3d.hoc')
 
         self.import3d = h.Import3d_SWC_read()
-        self.import3d.input(self.config_files['morphology'])
+        self.import3d.input(self.morpho_file)
         self.gui = h.Import3d_GUI(self.import3d, 0)
         self.gui.instantiate(self.morpho)
 
@@ -153,26 +150,24 @@ class Cell (object):
         self.compute_path_lengths()
 
     def biophysics(self):
-        mechanisms = json.load(open(self.config_files['mechanisms'],'r'))
-        for reg,mechs in mechanisms.items():
+
+        for reg,mechs in self.mechanisms.items():
             region = getattr(self.morpho,reg)
             for sec in region:
                 for mech in mechs:
                     sec.insert(mech)
 
-        parameters = json.load(open(self.config_files['parameters'],'r'))
-
         ### uncomment the following if we're not setting the number of
         ### segments based only on their length
         #if self.do_set_nseg:
-        #    for param in parameters:
+        #    for param in self.parameters:
         #        if param['param_name'] in ['cm','Ra','e_pas','g_pas']:
         #            region = getattr(self.morpho,param['sectionlist'])
         #            for sec in region:
         #                setattr(sec,param['param_name'],param['value'])
         #Cell.set_nseg(self.morpho)
         
-        for param in parameters:
+        for param in self.parameters:
             if param['type'] == 'global':
                 setattr(h,param['param_name'],param['value'])
             elif param['type'] in ['section','range']:

@@ -1,5 +1,4 @@
 
-
 import os
 import sys
 import copy
@@ -13,6 +12,7 @@ import matplotlib.pyplot as plt
 import efel
 from neuron import h
 from current_step import inject_current_step
+from utils import *
 
 
 def equal_sections(sec_a, sec_b, h, soma_a=None, soma_b=None):
@@ -95,25 +95,12 @@ class ColorFactory:
 
 colors = ColorFactory()
 
-
-def dump_parameters(parameters,default_parameters,evaluator,filename):
-    param_dict = evaluator.param_dict(parameters)
-    default_parameters_copy = copy.deepcopy(default_parameters)
-    for par in default_parameters_copy:
-        if 'value' not in par:
-            par['value'] = param_dict[par['param_name'] + '.' + par['sectionlist']]
-            par.pop('bounds')
-    json.dump(default_parameters_copy,open(filename,'w'),indent=4)
-
-
 argsort = lambda seq: sorted(list(range(len(seq))), key=seq.__getitem__)
 
 
 def worker(cell_id, args):
     swc_file = args['swc_file']
-    mech_file = args['mech_file']
     final_pop = args['final_pop']
-    default_parameters = args['default_parameters']
     evaluator = args['evaluator']
     I = args['I']
     stim_dur = args['stim_dur']
@@ -123,15 +110,25 @@ def worker(cell_id, args):
     err_max = args['err_max']
     verbose = args['verbose']
     individual = final_pop[cell_id]
-    params_file = '/tmp/individual_%03d.json' % cell_id
-    dump_parameters(individual, default_parameters, evaluator, params_file)
+    mechanisms = args['mechs']
+
+    config = None
+    default_parameters = None
+    if 'config' in args:
+        config = args['config']
+    else:
+        default_parameters = args['default_parameters']
+
+    parameters = build_parameters_dict([individual], evaluator, config, default_parameters)[0]
+
     stim_end = stim_start + stim_dur
 
     n_steps = len(I)
     for i in range(n_steps):
         good = True
         cell_name = 'individual_%03d_%d' % (cell_id,i)
-        recorders = inject_current_step(I[i], swc_file, mech_file, params_file, stim_start, stim_dur, cell_name, do_plot=False)
+        recorders = inject_current_step(I[i], stim_start, stim_dur, swc_file, parameters, \
+                                        mechanisms, cell_name, do_plot=False)
         h('forall delete_section()')
         trace = {'T': recorders['t'], 'V': recorders['Vsoma'], 'stim_start': [stim_start], 'stim_end': [stim_end]}
         feature_values = efel.getFeatureValues([trace],feature_names)
@@ -213,7 +210,6 @@ if __name__ == '__main__':
     n_individuals,n_parameters = final_pop.shape
     evaluator = pickle.load(open(folder + '/evaluator.pkl', 'rb'))
     protocols = json.load(open(folder + '/protocols.json'))
-    default_parameters = json.load(open(folder + '/parameters.json','r'))
     features = json.load(open(folder + '/features.json','r'))
 
     good_individuals_hof = []
@@ -272,7 +268,17 @@ if __name__ == '__main__':
                           colors.red('does not match') + ' the requisites.')
 
         swc_file = glob.glob(folder + '/*.converted.swc')[0]
+
         mech_file = folder + '/mechanisms.json'
+        if os.path.isfile(mech_file):
+            mechs = json.load(open(mech_file,'r'))
+            default_parameters = json.load(open(folder + '/parameters.json','r'))
+        else:
+            mech_file = None
+            cell_name = '_'.join(os.path.split(os.path.abspath(folder))[1].split('_')[1:])
+            config_file = folder + '/parameters.json'
+            config = json.load(open(config_file,'r'))[cell_name]
+            mechs = extract_mechanisms(config_file, cell_name)
 
         k = list(protocols.keys())[0]
         feature_names = [key for key in features[k]['soma'] if not key in features_to_ignore and \
@@ -289,17 +295,21 @@ if __name__ == '__main__':
         feature_reference_values = {feature: [feature_reference_values[feature][i] for i in idx] for feature in feature_names}
 
         args = {'swc_file': swc_file,
-                'mech_file': mech_file,
                 'final_pop': final_pop,
-                'default_parameters': default_parameters,
                 'evaluator': evaluator,
                 'I': I,
                 'stim_dur': stim_dur,
                 'stim_start': stim_start,
+                'mechs': mechs,
                 'feature_names': feature_names,
                 'feature_reference_values': feature_reference_values,
                 'err_max': err_max,
                 'verbose': verbose}
+
+        if mech_file is None:
+            args['config'] = config
+        else:
+            args['default_parameters'] = default_parameters
 
         individuals = [i for i in range(n_individuals) if i not in good_individuals_also_in_hof]
         good = list(map_func(lambda i: worker(i,args), individuals))

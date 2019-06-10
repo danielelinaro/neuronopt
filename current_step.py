@@ -8,15 +8,14 @@ import pickle
 import json
 import time
 
-def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_name=None, neuron=None, do_plot=False, verbose=False):
+
+def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_name=None, neuron=None, do_plot=False, verbose=False):
 
     if cell_name is None:
         import random
         cell_name = 'cell_%06d' % random.randint(0,999999)
 
-    cell = cu.Cell(cell_name,{'morphology': swc_file,
-                              'mechanisms': mech_file,
-                              'parameters': params_file})
+    cell = cu.Cell(cell_name, swc_file, parameters, mechanisms)
     cell.instantiate()
 
     if neuron is None:
@@ -85,18 +84,41 @@ def inject_current_step(I, swc_file, mech_file, params_file, delay, dur, cell_na
 def main():
     parser = arg.ArgumentParser(description='Compute the f-I curve of a neuron model.')
     parser.add_argument('I', type=float, action='store', help='current value in pA')
-    parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
-    parser.add_argument('-p','--params-file', type=str, help='JSON file containing the parameters of the model', required=True)
-    parser.add_argument('-o','--output', type=str, default='step.pkl', help='Output file name (default: step.pkl)')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
+    parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
+    parser.add_argument('-p','--params-file', type=str, default=None,
+                        help='JSON file containing the parameters of the model', required=True)
+    parser.add_argument('-m','--mech-file', type=str, default=None,
+                        help='JSON file containing the mechanisms to be inserted into the cell')
+    parser.add_argument('-c','--config-file', type=str, default=None,
+                        help='JSON file containing the configuration of the model')
+    parser.add_argument('-n','--cell-name', type=str, default=None,
+                        help='name of the cell as it appears in the configuration file')
+    parser.add_argument('-o','--output', type=str, default='step.pkl', help='output file name (default: step.pkl)')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose (default: no)')
     args = parser.parse_args(args=sys.argv[1:])
 
-    rec = inject_current_step(args.I, args.swc_file, args.mech_file, args.params_file, args.delay, args.dur, 'MyCell', args.plot, args.verbose)
-    
+    if args.mech_file is not None and args.config_file is not None:
+        print('--mech-file and --config-file cannot both be present.')
+        sys.exit(1)
+
+    if args.config_file is not None and args.cell_name is None:
+        print('You must specify --cell-name with --config-file.')
+        sys.exit(1)
+
+    parameters = json.load(open(args.params_file,'r'))
+
+    if args.config_file is not None or args.cell_name is not None:
+        import utils
+        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+    else:
+        mechanisms = json.load(open(args.mech_file,'r'))
+
+    rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file,
+                              parameters, mechanisms, do_plot=args.plot, verbose=args.verbose)
+        
     step = {'I': args.I, 'time': np.array(rec['t']), 'voltage': np.array(rec['Vsoma']), 'spike_times': np.array(rec['spike_times'])}
 
     pickle.dump(step, open(args.output,'wb'))
