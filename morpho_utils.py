@@ -162,33 +162,53 @@ def convert():
 
 def build():
     import cell_utils
+    import utils
+    import json
     
     parser = arg.ArgumentParser(description='Use a converted morphology to build a cell in NEURON',
                                 prog=progname+' build')
     parser.add_argument('swc_file', type=str, action='store', help='SWC file')
-    parser.add_argument('--mech-file', default='mechanisms.json', type=str, help='mechanisms file (default: mechanisms.json')
-    parser.add_argument('--params-file', default='parameters.json', type=str, help='parameters file (default: parameters.json')
-    parser.add_argument('-v','--verbose', action='store_true', help='Be verbose')
+    parser.add_argument('-p', '--params-file', default=None, type=str, help='parameters file', required=True)
+    parser.add_argument('-m', '--mech-file', default=None, type=str, help='mechanisms file')
+    parser.add_argument('-c', '--config-file', default=None, type=str, help='configuration file')
+    parser.add_argument('-n', '--cell-name', default=None, type=str, help='cell name (required only with --config-file)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose')
     args = parser.parse_args(args=sys.argv[2:])
 
     if not os.path.isfile(args.swc_file):
         print('%s: %s: no such file.' % (progname,args.swc_file))
         sys.exit(1)
 
-    if not os.path.isfile(args.mech_file):
-        print('%s: %s: no such file.' % (progname,args.mech_file))
-        sys.exit(1)
-
     if not os.path.isfile(args.params_file):
         print('%s: %s: no such file.' % (progname,args.params_file))
         sys.exit(1)
 
-    cell = cell_utils.Cell('MyCell',{'morphology': args.swc_file,\
-                                     'mechanisms': args.mech_file, \
-                                     'parameters': args.params_file})
+    if args.mech_file is not None:
+        if not os.path.isfile(args.mech_file):
+            print('%s: %s: no such file.' % (progname,args.mech_file))
+            sys.exit(1)
+        mechanisms = json.load(open(args.mech_file,'r'))
+    elif args.config_file is not None:
+        if not os.path.isfile(args.config_file):
+            print('%s: %s: no such file.' % (progname,args.config_file))
+            sys.exit(1)
+        if args.cell_name is None:
+            print('--cell-name must be present with --config-file option.')
+            sys.exit(1)
+        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+
+    parameters = json.load(open(args.params_file,'r'))
+
+    cell = cell_utils.Cell('MyCell', args.swc_file, parameters, mechanisms)
     cell.instantiate()
 
-    regions = ('soma','axon','basal','apical')
+    regions = ['soma','basal','apical']
+    try:
+        # does the morphology have an axon?
+        spam = cell.morpho.axon[1]
+        regions.append('axon')
+    except:
+        pass
     nsections = {r: 0 for r in regions}
     npoints = {r: 0 for r in regions}
     lengths = {r: 0 for r in regions}
