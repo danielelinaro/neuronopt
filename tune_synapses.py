@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from neuron import h
-import cell_utils as cu
 import synapse_utils as su
+import utils
+import json
 
 # the name of this script
 progname = os.path.basename(sys.argv[0])
@@ -20,7 +21,7 @@ normal = lambda x,m,s: 1./(np.sqrt(2*np.pi*s**2)) * np.exp(-(x-m)**2/(2*s**2))
 lognormal = lambda x,m,s: 1./(s*x*np.sqrt(2*np.pi)) * np.exp(-(np.log(x)-m)**2/(2*s**2))
 
 
-def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, reps, output_dir='.', do_plot=True):
+def simulate_synaptic_activation(swc_file, parameters, mechanisms, distr_name, mu, sigma, scaling, reps, output_dir='.'):
     """
     Instantiates reps cells and simulates them while recording the membrane potential. EPSPs are then extracted and their
     distribution is computed and fit with an appropriate distribution. Also saves the results to disk.
@@ -30,7 +31,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
     slm_border = 100.
     # beginning of the synaptic activation
     delay = 1000.
-    # interval between consecutive synapse being activated
+    # interval between consecutive synapses being activated
     dt = 250.
 
     print('(mu,sigma) = (%g,%g): ' % (mu,sigma))
@@ -40,7 +41,7 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
     synapses = []
     recorders = [h.Vector() for rep in range(reps)]
     for rep in range(reps):
-        cell,syn = su.build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, \
+        cell,syn = su.build_cell_with_synapses(swc_file, parameters, mechanisms, distr_name, \
                                                mu, sigma, scaling, slm_border)
         # activate each synapse in a sequential fashion
         t_event = delay
@@ -95,8 +96,8 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
     filename = 'EPSP_amplitudes_mu=%.3f_sigma=%.3f_%d%02d%02d_%02d%02d%02d' % \
                (mu,sigma,now.tm_year,now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec)
 
-    data = {'EPSP_amplitudes': EPSP_amplitudes, 'swc_file': swc_file, 'mech_file': mech_file, \
-            'params_file': params_file, 'distr_name': distr_name, 'mu': mu, 'sigma': sigma, \
+    data = {'EPSP_amplitudes': EPSP_amplitudes, 'swc_file': swc_file, 'mechanisms': mechanisms, \
+            'parameters': parameters, 'distr_name': distr_name, 'mu': mu, 'sigma': sigma, \
             'scaling': scaling, 'slm_border': slm_border, 'hist': hist, 'binwidth': binwidth, \
             'edges': edges, 'popt': popt}
     pickle.dump(data,open(output_dir + '/' + filename + '.pkl','wb'))
@@ -109,14 +110,19 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
 def simulate():
     parser = arg.ArgumentParser(description='Simulate synaptic activation in a neuron model.')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
-    parser.add_argument('-p','--params-file', type=str, help='JSON file containing the parameters of the model', required=True)
+    parser.add_argument('-p','--params-file', type=str, default=None, required=True,
+                        help='JSON file containing the parameters of the model')
+    parser.add_argument('-m','--mech-file', type=str, default=None,
+                        help='JSON file containing the mechanisms to be inserted into the cell')
+    parser.add_argument('-c','--config-file', type=str, default=None,
+                        help='JSON file containing the configuration of the model')
+    parser.add_argument('-n','--cell-name', type=str, default=None,
+                        help='name of the cell as it appears in the configuration file')
     parser.add_argument('--mean', default=None, type=float, help='mean of the distribution of the synaptic weights')
     parser.add_argument('--std', default=None, type=float, help='standard deviation of the distribution of the synaptic weights')
     parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
     parser.add_argument('--reps', default=10, type=int, help='number of repetitions')
     parser.add_argument('--scaling', default=1., type=float, help='AMPA/NMDA scaling')
-    parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     parser.add_argument('--output-dir', default='.', type=str, help='output folder')
     
     args = parser.parse_args(args=sys.argv[2:])
@@ -139,8 +145,32 @@ def simulate():
     if args.reps <= 0:
         raise ValueError('The number of repetitions must be positive')
     
-    simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file, args.distr, \
-                                 args.mean, args.std, args.scaling, args.reps, args.output_dir, do_plot=args.plot)
+    if not os.path.isfile(args.swc_file):
+        print('%s: %s: no such file.' % (progname,args.swc_file))
+        sys.exit(1)
+
+    if not os.path.isfile(args.params_file):
+        print('%s: %s: no such file.' % (progname,args.params_file))
+        sys.exit(1)
+
+    if args.mech_file is not None:
+        if not os.path.isfile(args.mech_file):
+            print('%s: %s: no such file.' % (progname,args.mech_file))
+            sys.exit(1)
+        mechanisms = json.load(open(args.mech_file,'r'))
+    elif args.config_file is not None:
+        if not os.path.isfile(args.config_file):
+            print('%s: %s: no such file.' % (progname,args.config_file))
+            sys.exit(1)
+        if args.cell_name is None:
+            print('--cell-name must be present with --config-file option.')
+            sys.exit(1)
+        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+
+    parameters = json.load(open(args.params_file,'r'))
+
+    simulate_synaptic_activation(args.swc_file, parameters, mechanisms, args.distr, \
+                                 args.mean, args.std, args.scaling, args.reps, args.output_dir)
 
 
 ############################################################

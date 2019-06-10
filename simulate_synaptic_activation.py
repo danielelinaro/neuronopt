@@ -5,12 +5,14 @@ import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
 from neuron import h
-import cell_utils as cu
 import synapse_utils as su
+import utils
 import pickle
 import json
 import tables as tbl
 
+# the name of this script
+progname = os.path.basename(sys.argv[0])
 
 def get_segment_coords(seg):
     sec = seg.sec
@@ -166,8 +168,10 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
             syn.set_presynaptic_spike_times(spks[spks < delay+duration])
             cnt += 1
 
-def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, mu, sigma, scaling, rate, delay, dur, rnd_seed=None, spikes_file=None, do_plot=False):
-    cell,synapses = su.build_cell_with_synapses(swc_file, mech_file, params_file, distr_name, \
+def simulate_synaptic_activation(swc_file, parameters, mechanisms, distr_name, mu, sigma, scaling, rate, \
+                                 delay, dur, rnd_seed=None, spikes_file=None, do_plot=False):
+
+    cell,synapses = su.build_cell_with_synapses(swc_file, parameters, mechanisms, distr_name, \
                                                 mu, sigma, scaling, slm_border=100.)
 
     recorders,coords,apc = make_recorders(cell, synapses, bifurcation=True, full=False)
@@ -197,11 +201,17 @@ def simulate_synaptic_activation(swc_file, mech_file, params_file, distr_name, m
 
 
 def main():
-    parser = arg.ArgumentParser(description='Simulate synaptic activation in a neuron model.')
+    parser = arg.ArgumentParser(description='Simulate synaptic activation in a neuron model.', prog=progname)
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
-    parser.add_argument('-p','--params-file', type=str, help='JSON file containing the parameters of the model', required=True)
-    parser.add_argument('--output-dir', type=str, default='.', help='Output file name (default: sim.pkl)')
+    parser.add_argument('-p','--params-file', type=str, default=None, required=True,
+                        help='JSON file containing the parameters of the model')
+    parser.add_argument('-m','--mech-file', type=str, default=None,
+                        help='JSON file containing the mechanisms to be inserted into the cell')
+    parser.add_argument('-c','--config-file', type=str, default=None,
+                        help='JSON file containing the configuration of the model')
+    parser.add_argument('-n','--cell-name', type=str, default=None,
+                        help='name of the cell as it appears in the configuration file')
+    parser.add_argument('--output-dir', type=str, default='.', help='Output directory (default: .)')
     parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
     parser.add_argument('--mu', type=float, help='Mean of the distribution of synaptic weights')
     parser.add_argument('--sigma', type=float, help='Standard deviation of the distribution of synaptic weights')
@@ -214,9 +224,33 @@ def main():
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     args = parser.parse_args(args=sys.argv[1:])
 
-    recorders,coords,synapses = simulate_synaptic_activation(args.swc_file, args.mech_file, args.params_file,\
-                                                             args.distr, args.mu, args.sigma, args.scaling,\
-                                                             args.rate, args.delay, args.dur, args.seed,\
+    if not os.path.isfile(args.swc_file):
+        print('%s: %s: no such file.' % (progname,args.swc_file))
+        sys.exit(1)
+
+    if not os.path.isfile(args.params_file):
+        print('%s: %s: no such file.' % (progname,args.params_file))
+        sys.exit(1)
+
+    if args.mech_file is not None:
+        if not os.path.isfile(args.mech_file):
+            print('%s: %s: no such file.' % (progname,args.mech_file))
+            sys.exit(1)
+        mechanisms = json.load(open(args.mech_file,'r'))
+    elif args.config_file is not None:
+        if not os.path.isfile(args.config_file):
+            print('%s: %s: no such file.' % (progname,args.config_file))
+            sys.exit(1)
+        if args.cell_name is None:
+            print('--cell-name must be present with --config-file option.')
+            sys.exit(1)
+        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+
+    parameters = json.load(open(args.params_file,'r'))
+
+    recorders,coords,synapses = simulate_synaptic_activation(args.swc_file, parameters, mechanisms, \
+                                                             args.distr, args.mu, args.sigma, args.scaling, \
+                                                             args.rate, args.delay, args.dur, args.seed, \
                                                              args.spikes_file, args.plot)
     
     save_data(recorders,coords,synapses,args)

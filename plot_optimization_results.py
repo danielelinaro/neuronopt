@@ -193,12 +193,16 @@ def main():
 
     parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses = load_files()
 
+    config = None
+    default_parameters = None
     if mechanisms is not None:
-        write_parameters_v1(parameters, hall_of_fame, evaluator)
+        default_parameters = parameters
     else:
         cell_name = '_'.join(os.path.split(os.path.abspath('.'))[1].split('_')[1:])
-        write_parameters_v2(parameters[cell_name], hall_of_fame, evaluator)
-
+        config = parameters[cell_name]
+    
+    write_parameters(hall_of_fame, evaluator, config, default_parameters)
+    
     if args.all:
         individuals = list(range(len(responses)))
     else:
