@@ -441,7 +441,7 @@ def extract_features():
 
     if mode == 'CA3':
         try:
-            sweeps_to_ignore = list(map(int, open('IGNORE_SWEEPS','r').readlines()))
+            sweeps_to_ignore = list(map(int, open(folder + '/IGNORE_SWEEPS','r').readlines()))
         except:
             sweeps_to_ignore = []
         files_in = []
