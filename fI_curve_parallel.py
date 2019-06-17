@@ -22,8 +22,7 @@ else:
     map_fun = map
 
 
-def params_files_from_pickle(pkl_file, parameters_file='parameters.json', evaluator_file='evaluator.pkl'):
-
+def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_file='evaluator.pkl'):
     try:
         data = pickle.load(open(pkl_file,'rb'))
         population = data['good_population']
@@ -31,20 +30,16 @@ def params_files_from_pickle(pkl_file, parameters_file='parameters.json', evalua
         population = np.array(pickle.load(open(pkl_file,'rb'), encoding='latin1'))
 
     evaluator = pickle.load(open(evaluator_file,'rb'))
-    parameters_files = []
 
-    for i,individual in enumerate(population):
-        parameters = json.load(open(parameters_file,'r'))
-        param_dict = evaluator.param_dict(individual)
-        for par in parameters:
-            if 'value' not in par:
-                par['value'] = param_dict[par['param_name'] + '.' + par['sectionlist']]
-                par.pop('bounds')
-        params_file = '/tmp/individual_%d.json' % i
-        json.dump(parameters,open(params_file,'w'),indent=4)
-        parameters_files.append(params_file)
+    if cell_name is None:
+        default_parameters = json.load(open(parameters_file,'r'))
+        config = None
+    else:
+        default_parameters = None
+        config = json.load(open(config_file,'r'))[cell_name]
 
-    return parameters_files
+    import utils
+    return utils.build_parameters_dict(population, evaluator, config, default_parameters)
 
 
 def plot_means_with_sem(x,y,color='k',label=''):
@@ -60,13 +55,16 @@ if __name__ == '__main__':
     parser = arg.ArgumentParser(description='Compute the f-I curve of a neuron model.')
     parser.add_argument('I', type=str, action='store', help='current values in pA, either comma separated or interval and steps, as in 100:300:50')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-m','--mech-file', type=str, default='mechanisms.json', help='JSON file containing the mechanisms to be inserted into the cell')
-    parser.add_argument('-p','--params-files', type=str, help='JSON file(s) containing the parameters of the model (comma separated)')
+    parser.add_argument('-p','--params-files', type=str, default='', help='JSON file(s) containing the parameters of the model (comma separated)')
+    parser.add_argument('-m','--mech-file', type=str, default='', help='JSON file containing the mechanisms to be inserted into the cell')
+    parser.add_argument('-c','--config-file', type=str, default='', help='JSON file(s) containing the configuration')
+    parser.add_argument('-n','--cell-name', default='', type=str, help='cell name, if the mechanisms are stored in new style format')
+    parser.add_argument('-P','--pickle-file', type=str, default='', help='Pickle file containing the parameters of a population of individuals')
+    parser.add_argument('-e','--evaluator-file', type=str, default='evaluator.pkl', help='Pickle file containing the evaluator')
     parser.add_argument('-o','--output', type=str, default='fI_curve.pkl', help='Output file name')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
     parser.add_argument('--tran', default=200., type=float, help='transient to be discard after stimulation onset (default: 200 ms)')
-    parser.add_argument('--cell-name', default='', type=str, help='cell name, if the mechanisms are stored in new style format')
     args = parser.parse_args(args=sys.argv[1:])
 
     try:
@@ -81,50 +79,60 @@ if __name__ == '__main__':
             print('Unknown current definition: %s.' % args.I)
             sys.exit(1)
 
+    new_config_style = False
+    if args.config_file != '':
+        new_config_style = True
+
+    if new_config_style and args.cell_name == '':
+        print('You must provide the --cell-name option along with the --config-file option.')
+        sys.exit(1)
+
     if '*' in args.params_files:
         import glob
         params_files = glob.glob(args.params_files)
-    elif params_files[-3:] == 'pkl':
-        params_files = params_files_from_pickle(args.params_files)
     else:
         params_files = args.params_files.split(',')
+
+    if args.mech_file == '':
+        if not new_config_style:
+            print('You must provide the --mech-file option if no configuration file is specified.')
+            sys.exit(1)
+        import utils
+        cell_name = args.cell_name
+        mechanisms = utils.extract_mechanisms(args.config_file, cell_name)
+    else:
+        cell_name = None
+        mechanisms = json.load(open(args.mech_file,'r'))
+
+    if args.pickle_file == '':
+        population = [json.load(open(params_file,'r')) for params_file in params_files]
+    else:
+        if len(params_files) > 1:
+            print('You cannot specify multiple parameter files and one pickle file.')
+            sys.exit(1)
+        population = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
 
     dur = args.dur
     delay = args.delay
     tran = args.tran
 
-    N = len(params_files)
+    N = len(population)
     f = np.zeros((N,len(I)))
     no_spikes = np.zeros((N,len(I)))
     inverse_first_isi = np.zeros((N,len(I)))
     inverse_last_isi = np.zeros((N,len(I)))
     spike_times = []
 
-    if args.cell_name != '':
-        mech_file = '/tmp/mechanisms.json'
-        config = json.load(open(args.mech_file,'rb'))
-        mechs = {}
-        for k,v in config[args.cell_name]["mechanisms"].items():
-            if k == 'alldend':
-                mechs['apical'] = v
-                mechs['basal'] = v
-            else:
-                mechs[k] = v
-        json.dump(mechs, open(mech_file,'w'), indent=4)
-    else:
-        mech_file = args.mech_file
+    for i,individual in enumerate(population):
 
-    for i,params_file in enumerate(params_files):
-
-        worker = lambda Idc: inject_current_step(Idc, args.swc_file, mech_file,
-                                                 params_file, delay, dur,
-                                                 None, neuron, False, True)
+        worker = lambda Idc: inject_current_step(Idc, delay, dur, args.swc_file, individual, mechanisms,
+                                                 cell_name=None, neuron=neuron, do_plot=False, verbose=False)
 
         curve = list(map_fun(worker, I))
         neuron.h('forall delete_section()')
-        
+
         spks = [np.array(point['spike_times']) for point in curve]
-        no_spikes[i,:] = [x.shape[0]/dur*1e3 for x in spks]
+        no_spikes[i,:] = [len(x)/dur*1e3 for x in spks]
         f[i,:] = [len(x[(x>delay+tran) & (x<delay+dur)])/(dur-tran)*1e3 for x in spks]
         inverse_first_isi[i,:] = [1e3/np.diff(t[:2]) if len(t) > 1 else 0 for t in spks]
         inverse_last_isi[i,:] = [1e3/np.diff(t[-2:]) if len(t) > 1 else 0 for t in spks]
