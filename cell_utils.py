@@ -15,9 +15,10 @@ def compute_section_area(section):
         a += h.area(segment.x, sec=section)
     return a
 
-def distance(origin, end, x=0.5):
-    h.distance(sec=origin)
-    return h.distance(x, sec=end)
+def distance(origin, end):
+    # origin and end are two Segment objects
+    h.distance(0, origin.x, sec=origin.sec)
+    return h.distance(1, end.x, sec=end.sec)
 
 def dst(x,y):
     return np.sqrt(np.sum((x-y)**2))
@@ -88,11 +89,11 @@ class Cell (object):
         else:
             ais_diams = [morpho.axon[0].diam, morpho.axon[0].diam]
             # Define origin of distance function
-            h.distance(sec=morpho.soma[0])
+            h.distance(0, 0.5, sec=morpho.soma[0])
 
             for section in morpho.axonal:
                 # If distance to soma is larger than 60, store diameter
-                if h.distance(0.5, sec=section) > 60:
+                if h.distance(1, 0.5, sec=section) > 60:
                     ais_diams[1] = section.diam
                     break
 
@@ -142,9 +143,16 @@ class Cell (object):
         if self.do_set_nseg:
             Cell.set_nseg(self.morpho)
 
+        self.n_somatic_sections = len([sec for sec in self.morpho.somatic])
+        self.n_axonal_sections = len([sec for sec in self.morpho.axonal])
+        self.n_apical_sections = len([sec for sec in self.morpho.apical])
+        self.n_basal_sections = len([sec for sec in self.morpho.basal])
+        self.n_myelinated_sections = len([sec for sec in self.morpho.myelinated])
+        self.n_sections = len([sec for sec in self.morpho.all])
+
         self.biophysics()
 
-        h.distance(sec=self.morpho.soma[0])
+        h.distance(0, 0.5, sec=self.morpho.soma[0])
         self.compute_total_area()
         self.compute_measures()
         self.compute_path_lengths()
@@ -176,10 +184,10 @@ class Cell (object):
                     for sec in region:
                         setattr(sec,param['param_name'],param['value'])
                 else:
-                    h.distance(sec=self.morpho.soma[0])
+                    h.distance(0, 0.5, sec=self.morpho.soma[0])
                     for sec in region:
                         for seg in sec:
-                            dst = h.distance(seg.x,sec=sec)
+                            dst = h.distance(1, seg.x, sec=sec)
                             g = eval(param['dist'].format(distance=dst,value=param['value']))
                             setattr(seg,param['param_name'],g)
             else:
@@ -219,13 +227,8 @@ class Cell (object):
                 fid.write('[%s,%03d] %10.6f --- (%11.6f,%11.6f,%11.6f) <-> (%11.6f,%11.6f,%11.6f)\n' % (n,i,d,p[0],p[1],p[2],pt[0],pt[1],pt[2]))
         return None
 
-    def distance_from_soma(self, sec, x=None):
-        if x is not None:
-            return distance(self.morpho.soma[0], sec, x)
-        dst = []
-        for seg in sec:
-            dst.append(distance(self.morpho.soma[0], sec, seg.x))
-        return dst
+    def distance_from_soma(self, seg):
+        return distance(self.morpho.soma[0](0.5), seg)
 
     def compute_measures(self):
         self.total_nseg = 0.
@@ -241,7 +244,7 @@ class Cell (object):
             for seg in sec:
                 segment = {'seg': seg, 'sec': sec, \
                            'area': h.area(seg.x,sec), \
-                           'dst': self.distance_from_soma(sec,seg.x)}
+                           'dst': self.distance_from_soma(seg)}
                 self.total_area += segment['area']
                 self.all_segments.append(segment)
                 if sec in self.morpho.soma:

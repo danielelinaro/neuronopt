@@ -61,10 +61,10 @@ def compute_fI_curve(I, swc_file, parameters, mechanisms, delay=500., dur=2000.,
             recorders[lbl] = h.Vector()
         recorders['t'].record(h._ref_t)
         recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
-        try:
-            recorders['Vaxon'].record(cell.morpho.axon[4](0.5)._ref_v)
-        except:
-            print('No axon?')
+        if cell.n_axonal_sections > 0:
+            recorders['Vaxon'].record(cell.morpho.axon[0](0.5)._ref_v)
+        else:
+            print('The cell has no axon.')
         for sec,dst in zip(cell.morpho.apic,cell.apical_path_lengths):
             if dst[0] >= 100:
                 recorders['Vapic'].record(sec(0.5)._ref_v)
@@ -85,6 +85,11 @@ def compute_fI_curve(I, swc_file, parameters, mechanisms, delay=500., dur=2000.,
         h.t = 0
         h.run()
         spike_times.append(np.array(recorders['spike_times']))
+        if len(I) == 1 and do_plot:
+            plt.figure()
+            plt.plot(recorders['t'],recorders['Vsoma'],'k',label='Soma')
+            plt.xlabel('Time (ms)')
+            plt.ylabel(r'$V_m$ (mV)')
 
     no_spikes = np.array([x.shape[0]/dur*1e3 for x in spike_times])
     f = np.array([len(x[(x>delay+tran) & (x<delay+dur)])/(dur-tran)*1e3 for x in spike_times])
@@ -92,6 +97,7 @@ def compute_fI_curve(I, swc_file, parameters, mechanisms, delay=500., dur=2000.,
     inverse_last_isi = np.array([1e3/np.diff(t[-2:]) if len(t) > 1 else 0 for t in spike_times]).squeeze()
 
     if do_plot:
+        plt.figure()
         plt.plot(I,no_spikes,'ro-',label='All spikes')
         plt.plot(I,f,'ko-',label='With transient removed')
         plt.plot(I,inverse_first_isi,'bo-',label='Inverse first ISI')
@@ -169,7 +175,6 @@ def main():
     else:
         parameters = [json.load(open(f,'r')) for f in params_files]
 
-    plt.figure()
     if len(parameters) > 1:
         f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curves(I*1e-3, args.swc_file, parameters, mechanisms, \
                                                                            args.delay, args.dur, args.tran, True)
@@ -181,10 +186,8 @@ def main():
         f,no_spikes,inverse_first_isi,inverse_last_isi = compute_fI_curve(I*1e-3, args.swc_file, parameters[0], \
                                                                           mechanisms, args.delay, args.dur, \
                                                                           args.tran, 'MyCell', do_plot=True)
-        suffix = params_files[0].split('.')[0]
+        suffix = os.path.basename(params_files[0]).split('.')[0]
 
-    import ipdb
-    ipdb.set_trace()
     plt.savefig('fI_curve_%s.pdf' % suffix)
     plt.show()
 

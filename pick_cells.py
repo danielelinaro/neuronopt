@@ -15,64 +15,6 @@ from current_step import inject_current_step
 from utils import *
 
 
-def equal_sections(sec_a, sec_b, h, soma_a=None, soma_b=None):
-    if sec_a.nseg != sec_b.nseg:
-        print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-        print('{} <> {} segments.'.format(sec_a.nseg, sec_b.n_seg))
-        return False
-    n3d_a = int(h.n3d(sec=sec_a))
-    n3d_b = int(h.n3d(sec=sec_b))
-    if n3d_a != n3d_b:
-        print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-        print('{} <> {} points.'.format(n3d_a, n3d_b))
-        return False
-    for i in range(n3d_a):
-        pt_a = np.array([h.x3d(i,sec=sec_a),
-                         h.y3d(i,sec=sec_a),
-                         h.z3d(i,sec=sec_a)])
-        pt_b = np.array([h.x3d(i,sec=sec_b),
-                         h.y3d(i,sec=sec_b),
-                         h.z3d(i,sec=sec_b)])
-        if np.any(pt_a != pt_b):
-            print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-            print('{} <> {}.'.format(pt_a, pt_b))
-            return False
-    if sec_a.Ra != sec_b.Ra:
-        print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-        print('Ra: {} <> {}.'.format(sec_a.Ra, sec_b.Ra))
-        return False
-    if sec_a.cm != sec_b.cm:
-        print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-        print('Cm: {} <> {}.'.format(sec_a.cm, sec_b.cm))
-        return False
-    for seg_a,seg_b in zip(sec_a,sec_b):
-        for mech_a,mech_b in zip(seg_a,seg_b):
-            if mech_a.name() != mech_b.name():
-                print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-                print('{} <> {}.'.format(mech_a.name(),mech_b.name()))
-                return False                
-            if mech_a.__dict__.keys() != mech_b.__dict__.keys():
-                print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-                print('{} <> {}.'.format(mech_a.__dict__.keys(),mech_b.__dict__.keys()))
-                return False
-            if mech_a.name() in ('ca_ion','k_ion','na_ion'):
-                continue
-            for k in mech_a.__dict__.keys():
-                attr_a = mech_a.__getattribute__(k)
-                attr_b = mech_b.__getattribute__(k)
-                if k == 'gIhbar' and attr_a != attr_b:
-                    h.distance(sec=soma_a)
-                    dst = h.distance(seg_a.x, sec=sec_a)
-                    value = attr_a
-                    attr_a = ( -0.8696 + 2.087 * np.exp(dst * 0.0031) ) * value
-                    mech_a.gIhbar = attr_a
-                if attr_a != attr_b:
-                    print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-                    print('{}: {} <> {}.'.format(k, attr_a, attr_b))
-                    return False
-    return True
-
-
 class ColorFactory:
     RED = '\033[91m'
     GREEN = '\033[92m'

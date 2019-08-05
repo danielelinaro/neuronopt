@@ -38,10 +38,10 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
         recorders[lbl] = h.Vector()
     recorders['t'].record(h._ref_t)
     recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
-    try:
-        recorders['Vaxon'].record(cell.morpho.axon[4](0.5)._ref_v)
-    except:
-        print('No axon?')
+    if cell.n_axonal_sections > 0:
+        recorders['Vaxon'].record(cell.morpho.axon[0](0.5)._ref_v)
+    else:
+        print('The cell has no axon.')
     for sec,dst in zip(cell.morpho.apic,cell.apical_path_lengths):
         if dst[0] >= 100:
             recorders['Vapic'].record(sec(0.5)._ref_v)
