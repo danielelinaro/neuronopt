@@ -355,6 +355,39 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
             print('-------------------------------------------------------')
 
 
+def read_ibw_history_file(filename):
+    data = ibw.load(filename)
+    rows,cols = data['wave']['wData'].shape
+    tmp = [[] for _ in range(cols)]
+    m,n = 0,0
+    for i in range(cols):
+        for j in range(rows):
+            tmp[i].append(data['wave']['wData'][m][n])
+            n += 1
+            if n == cols:
+                n = 0
+                m += 1
+    info = {}
+    for lst in tmp:
+        k = lst[0].decode('UTF-8').replace(' ','_').lower()
+        info[k] = []
+        for elem in lst[1:]:
+            v = elem.decode('UTF-8')
+            if v  == '':
+                info[k].append(None)
+            elif '.' in v:
+                try:
+                    info[k].append(float(v))
+                except:
+                    info[k].append(v)
+            else:
+                try:
+                    info[k].append(int(v))
+                except:
+                    info[k].append(v)
+    return info
+
+
 def read_tab_delim_file(filename):
     with open(filename,'r') as fid:
         header = fid.readline()
@@ -387,8 +420,8 @@ def extract_features():
                         help='the file where data is stored')
     parser.add_argument('-F', '--sampling-rate', default=20., type=float,
                         help='the sampling rate at which data was recorded (default 20 kHz)')
-    parser.add_argument('--history-file', default='history.txt', type=str,
-                        help='history file (default: history.txt)')
+    parser.add_argument('--history-file', default='DP_Sweeper/history.ibw', type=str,
+                        help='history file (default: DP_Sweeper/history.ibw)')
     parser.add_argument('--stim-dur', default=500., type=float,
                         help='Stimulus duration (default 500 ms)')
     parser.add_argument('--stim-start', default=125., type=float,
@@ -437,7 +470,14 @@ def extract_features():
         if not os.path.isfile(history_file):
             print('%s: %s: no such file.' % (progname,args.history_file))
             sys.exit(4)
-        info = read_tab_delim_file(history_file)
+        if history_file[-3:] == 'ibw':
+            info = read_ibw_history_file(history_file)
+        elif history_file[-3:] == 'txt':
+            info = read_tab_delim_file(history_file)
+        else:
+            print('%s: %s: unknown history file type. File suffix should be either ibw or txt.' % \
+                  (progname+'-extract',history_file))
+            sys.exit(5)
 
     if mode == 'CA3':
         try:
