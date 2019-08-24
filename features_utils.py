@@ -88,6 +88,7 @@ def write_features():
                         help='pkl files containing the data relative to each cell')
     parser.add_argument('-N', '--nsteps', default=3, type=int,
                         help='number of current steps to include in the protocols (default: 3)')
+    parser.add_argument('--all-amps', action='store_true', help='use all amplitudes in the pickle file')
     parser.add_argument('--step-amps', type=str,
                         help='current amplitudes to include in the protocols, in alternative to the --nsteps option')
     parser.add_argument('--round-amp', default=0.025, type=float,
@@ -103,6 +104,7 @@ def write_features():
     parser.add_argument('--stim-start', default=None, type=float, help='delay before application of the stimulus')
     parser.add_argument('--stim-dur', default=None, type=float, help='duration of the stimulus')
     parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
+    parser.add_argument('--prompt-user', action='store_true', help='ask the user whether to remove protocols that do not have all features')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -111,8 +113,21 @@ def write_features():
             print('%s: %s: no such file.' % (progname,f))
             sys.exit(1)
 
-    nsteps = args.nsteps
-    desired_amps = None
+    if len(args.files) > 1 and args.all_amps:
+        print('--all-amps can only be used when there is only one pickle file')
+        sys.exit(1)
+
+    if args.all_amps and not args.step_amps is None:
+        print('--all-amps and --step-amps cannot be used simultaneously')
+        sys.exit(1)
+
+    if args.all_amps:
+        data = pickle.load(open(args.files[0],'rb'))
+        desired_amps = np.unique(data['current_amplitudes'])
+        nsteps = len(desired_amps)
+    else:
+        nsteps = args.nsteps
+        desired_amps = None
 
     if not args.step_amps is None:
         desired_amps = list(map(float,args.step_amps.split(',')))
@@ -161,12 +176,15 @@ def write_features():
 
     amplitudes = []
     features = []
+    rheobases = []
     for f in args.files:
         data = pickle.load(open(f,'rb'))
         stim_dur = data['stim_dur']
         stim_start = data['stim_start']
         features.append(data['features'])
-        amplitudes.append(data['current_amplitudes'])
+        rheobases.append(np.min(data['current_amplitudes']))
+        amplitudes.append(data['current_amplitudes'] - rheobases[-1])
+    print('Mean rheobase: %g nA.' % np.mean(rheobases))
 
     if args.stim_start is not None:
         stim_start = args.stim_start
@@ -193,26 +211,29 @@ def write_features():
     else:
         desired_amps = np.tile(np.array(desired_amps),(len(amplitudes),1))
 
+    RHEOBASE = np.mean(rheobases)
+
     protocols_dict = {}
     for i in range(nsteps):
         stepnum = 'Step%d'%(i+1)
         protocols_dict[stepnum] = {'stimuli': [{
-            'delay': stim_start, 'amp': np.round(np.mean(desired_amps[:,i])/args.round_amp)*args.round_amp,
+            'delay': stim_start, 'amp': RHEOBASE + np.round(np.mean(desired_amps[:,i])/args.round_amp)*args.round_amp,
             'duration': stim_dur, 'totduration': stim_dur+stim_start+args.after}]}
 
-    flatten = lambda l: [item for sublist in l for item in sublist]
+    #for sublist in l:
+    #    if sublist is not None:
+    #        for item in sublist:
+    #            item
+    flatten = lambda l: [item for sublist in l if sublist is not None for item in sublist]
 
     all_features = [{name: [] for name in feature_names[args.cell_type]} for i in range(nsteps)]
-    features_dict = {'Step%d'%i: {'soma': {}} for i in range(1,4)}
+    features_dict = {'Step%d'%i: {'soma': {}} for i in range(1,nsteps+1)}
     for name in feature_names[args.cell_type]:
         for i in range(len(args.files)):
-            for j in range(len(amplitudes[i])):
-                idx, = np.where(amplitudes[i][j] == desired_amps[i])
-                if len(idx) == 1:
-                    try:
-                        all_features[idx[0]][name].append(features[i][j][name].tolist())
-                    except:
-                        pass
+            for j in range(nsteps):
+                idx, = np.where(np.abs(amplitudes[i] - desired_amps[i][j]) < 1e-6)
+                for k in idx:
+                    all_features[j][name].append(features[i][k][name])
         for i in range(nsteps):
             stepnum = 'Step%d' % (i+1)
             all_features[i][name] = flatten(all_features[i][name])
@@ -227,7 +248,9 @@ def write_features():
     num_features = len(feature_names[args.cell_type])
     to_remove = []
     for stepnum,step in features_dict.items():
-        if len(step['soma']) < num_features:
+        if len(step['soma']) == 0:
+            to_remove.append(stepnum)
+        if args.prompt_user and len(step['soma']) < num_features:
             print('Not all features were extracted for protocol "%s".' % stepnum)
             print('The extracted features are the following:\n')
             for i,feat in enumerate(step['soma']):
@@ -246,9 +269,8 @@ def write_features():
     for stepnum in to_remove:
         features_dict.pop(stepnum)
         protocols_dict.pop(stepnum)
-
-    json.dump(protocols_dict,open(protocols_file,'w'),indent=4)
-    json.dump(features_dict,open(features_file,'w'),indent=4)
+    json.dump(features_dict, open(features_file,'w'),indent=4)
+    json.dump(protocols_dict, open(protocols_file,'w'),indent=4)
 
 
 ############################################################
@@ -293,7 +315,7 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
         voltage = voltage.T
     time = np.arange(voltage.shape[1]) / sampling_rate
 
-    idx, = np.where((time>0.25*stim_start) & (time<=2*stim_end))
+    idx, = np.where((time>stim_start-10) & (time<=stim_end+10))
     traces = [{'T': time[idx], 'V': sweep[idx], 'stim_start': [stim_start], 'stim_end': [stim_end]} \
               for sweep in voltage]
     voltage_range = [np.min(voltage),np.max(voltage)]
@@ -313,6 +335,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         with_spikes = []
         offset = 0
         for i,f in enumerate(files_in):
+            print('I = %g pA.' % current_amplitudes[i])
             feat,voltage_range,_ = extract_features_from_file(f,stim_dur,stim_start,sampling_rate)
             try:
                 # Spikecount feature is present
@@ -411,6 +434,19 @@ def read_tab_delim_file(filename):
     return data
 
 
+def parse_sweeps(filename):
+    with open(filename, 'r') as fid:
+        sweeps = []
+        for line in fid.read().splitlines():
+            if '-' in line:
+                ss = [int(x) for x in line.split('-')]
+                for sweep in range(ss[0], ss[1]+1):
+                    sweeps.append(sweep)
+            else:
+                sweeps.append(int(line))
+    return sweeps
+
+
 def extract_features():
     parser = arg.ArgumentParser(description='Extract ephys features from recordings.',\
                                 prog=progname+' extract')
@@ -430,8 +466,8 @@ def extract_features():
                         help='minimum injected current, in nA')
     parser.add_argument('--Istep', default=0.1, type=float,
                         help='current step (default 0.1 nA)')
-    parser.add_argument('--spike-threshold', default=0., type=float,
-                        help='spike threshold (default 0 mV)')
+    parser.add_argument('--spike-threshold', default=-20., type=float,
+                        help='spike threshold (default -20 mV)')
     parser.add_argument('--quiet', action='store_true', help='be quiet')
 
     args = parser.parse_args(args=sys.argv[2:])
@@ -481,25 +517,46 @@ def extract_features():
 
     if mode == 'CA3':
         try:
-            sweeps_to_ignore = list(map(int, open(folder + '/IGNORE_SWEEPS','r').readlines()))
+            sweeps_to_ignore = parse_sweeps(folder + '/IGNORE_SWEEPS')
         except:
             sweeps_to_ignore = []
+        try:
+            good_sweeps = parse_sweeps(folder + '/GOOD_SWEEPS')
+        except:
+            good_sweeps = [i for i in range(1,1001) if not i in sweeps_to_ignore]
+        if len(np.intersect1d(sweeps_to_ignore, good_sweeps)) > 0:
+            print('IGNORE_SWEEPS and GOOD_SWEEPS are not mutually exclusive.')
+            sys.exit(6)
         files_in = []
         file_out = folder.split('/')[-1] + '.pkl'
         current_amplitudes = []
         n = len(info['sweep_index'])
         for i in range(n):
-            if info['builder_name'][i] == 'StepPulse' and info['sweep_index'].count(info['sweep_index'][i]) == 2:
+            if (info['builder_name'][i] == 'StepPulse' or info['builder_name'][i] == 'BuiltinPulse') \
+               and info['sweep_index'].count(info['sweep_index'][i]) == 2:
                 params = info['builder_parameters'][i].split(';')
                 for p in params:
                     if 'duration' in p:
                         dur = float(p.split('=')[1])
                     elif 'amplitude' in p:
                         amp = float(p.split('=')[1])*info['multiplier'][i]*1e-3
-                if not info['sweep_index'][i] in sweeps_to_ignore and dur == args.stim_dur and amp > 0:
-                    print('[%02d] dur=%g ms, amp=%g nA' % (info['sweep_index'][i],dur,amp))
-                    files_in.append('%s/ad0_%d.ibw' % (folder,info['sweep_index'][i]))
-                    current_amplitudes.append(amp)
+                flag = True
+            elif info['builder_name'][i] == 'Train' and info['sweep_index'].count(info['sweep_index'][i]) == 3:
+                params = info['builder_parameters'][i].split(';')
+                for p in params:
+                    if 'pulseDuration' in p:
+                        dur = float(p.split('=')[1])
+                    elif 'amplitude' in p:
+                        amp = float(p.split('=')[1])*info['multiplier'][i]*1e-3
+                flag = False
+            else:
+                flag = False
+            if flag and not info['sweep_index'][i] in sweeps_to_ignore and \
+               info['sweep_index'][i] in good_sweeps and \
+               dur == args.stim_dur and amp > 0:
+                print('[%02d] dur=%g ms, amp=%g nA' % (info['sweep_index'][i],dur,amp))
+                files_in.append('%s/ad0_%d.ibw' % (folder,info['sweep_index'][i]))
+                current_amplitudes.append(amp)
     elif mode == 'cortex':
         files_in = [filename]
         file_out = os.path.basename(filename).split('.')[0] + '.pkl'
@@ -595,6 +652,7 @@ def dump_features():
     parser = arg.ArgumentParser(description='Dump feature files into several CSV files.',
                                 prog=progname+' dump')
     parser.add_argument('files', type=str, nargs='+', help='feature files')
+    parser.add_argument('--no-std', action='store_true', help='do not dump the standard deviation')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -610,22 +668,33 @@ def dump_features():
     idx = np.argsort(list(map(len,labels)))
     labels = [labels[i] for i in idx]
     features = [features[i] for i in idx]
-    nsteps = 3
+    nsteps = 9
     for i in range(1,nsteps+1):
         stepnum = 'Step%d' % i
         fid = open(stepnum + '.csv','w')
         fid.write('Feature,')
         for lbl in labels:
-            fid.write('%s (mean),%s (std),' % (lbl.replace('_',' '),lbl.replace('_',' ')))
+            if args.no_std:
+                fid.write('%s (mean),' % lbl.replace('_',' '))
+            else:
+                fid.write('%s (mean),%s (std),' % (lbl.replace('_',' '),lbl.replace('_',' ')))
         fid.write('\n')
-        for name in features[0][stepnum]['soma']:
+        j = 0
+        while j < len(features) and stepnum not in features[j]:
+            j += 1
+        if j == len(features):
+            continue
+        for name in features[j][stepnum]['soma']:
             fid.write('%s,' % name)
             for feat in features:
                 try:
                     values = feat[stepnum]['soma'][name]
                 except:
                     values = [np.nan,np.nan]
-                fid.write('%g,%g,' % (values[0],values[1]))
+                if args.no_std:
+                    fid.write('%g,' % values[0])
+                else:
+                    fid.write('%g,%g,' % (values[0],values[1]))
             fid.write('\n')
         fid.close()
 
