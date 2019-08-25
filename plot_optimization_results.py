@@ -56,21 +56,27 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
 
     features = {}
     features_std_units = {}
-    for proto,feature_names in target_features.items():
+    for proto,target_feature in target_features.items():
+        feature_names = target_feature['soma'].keys()
         stim_start = evaluator.fitness_protocols[proto].stimuli[0].step_delay
         stim_end = stim_start + evaluator.fitness_protocols[proto].stimuli[0].step_duration
         trace = {'T': responses[individual][proto+'.soma.v']['time'],
                  'V': responses[individual][proto+'.soma.v']['voltage'],
                  'stim_start': [stim_start], 'stim_end': [stim_end]}
-        features[proto] = {k:[np.mean(v),np.std(v)] for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].items()}
-        features_std_units[proto] = {k:np.abs(target_features[proto]['soma'][k][0]-np.mean(v))/target_features[proto]['soma'][k][1] \
-                                     for k,v in efel.getFeatureValues([trace],feature_names['soma'])[0].items()}
+        feature_values = efel.getFeatureValues([trace],feature_names)[0]
+        features[proto] = {k: [np.mean(v),np.std(v)] if v is not None else [None,None] \
+                           for k,v in feature_values.items()}
+        features_std_units[proto] = {k: np.abs(target_feature['soma'][k][0]-np.mean(v)) / target_feature['soma'][k][1] \
+                                     if v is not None else None for k,v in feature_values.items()}
         print('%s:' % proto)
-        feature_values = efel.getFeatureValues([trace],feature_names['soma'])[0]
-        for name,values in feature_names['soma'].items():
-            print('\t%s: model: %g (%g std from data mean). data: %g +- %g (std/mean: %g)' %
-                  (name,feature_values[name][0],np.abs(values[0]-feature_values[name][0])/values[1],
-                   values[0],values[1],values[1]/np.abs(values[0])))
+        for name,values in target_feature['soma'].items():
+            if features[proto][name][0] is None:
+                print('\t%s: model: None. data: %g +- %g (std/mean: %g)' %
+                      (name,values[0],values[1],values[1]/np.abs(values[0])))
+            else:
+                print('\t%s: model: %g (%g std from data mean). data: %g +- %g (std/mean: %g)' %
+                      (name,features[proto][name][0],features_std_units[proto][name],
+                       values[0],values[1],values[1]/np.abs(values[0])))
 
     if dump:
         fid = open('%s_individual_%d_errors.csv'%(os.path.basename(os.path.abspath('.')),individual),'w')
@@ -151,14 +157,15 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
             dtick = 5
         else:
             dtick = 2
-        plt.xticks(np.arange(0,np.ceil(np.max(X))+1,dtick),fontsize=fnt)
+
+        plt.xticks(np.arange(0,np.ceil(np.nanmax(X))+1,dtick),fontsize=fnt)
     
         if i == 0:
             plt.yticks(Y,all_feature_names,fontsize=6)
         else:
             plt.yticks(Y,[])
         
-        plt.axis([0,np.max([3.1,np.ceil(np.max(X))]),np.min(Y)-1,np.max(Y)+1])
+        plt.axis([0,np.max([3.1,np.ceil(np.nanmax(X))]),np.min(Y)-1,np.max(Y)+1])
 
     blue = [.9,.9,1]
     ax = plt.axes([0.25,0.05,0.72,0.25])
