@@ -247,11 +247,12 @@ class Cell (object):
                         np.array([sec.z3d(i) for i in range(n_points)], ndmin=2)]
             arc = np.array([sec.arc3d(i) for i in range(n_points)])
             for seg in sec:
-                idx = np.argmin(np.abs(arc - sec.L*seg.x))
                 segment = {'seg': seg, 'sec': sec, \
-                           'area': h.area(seg.x,sec), \
-                           'dst': self.distance_from_soma(seg), \
-                           'center': xyz[:,idx]}
+                           'area': seg.area(), \
+                           'dst': self.distance_from_soma(seg)}
+                if len(arc) > 0:
+                    idx = np.argmin(np.abs(arc - sec.L*seg.x))
+                    segment['center'] =  xyz[:,idx]
                 self.total_area += segment['area']
                 self.all_segments.append(segment)
                 if sec in self.morpho.soma:

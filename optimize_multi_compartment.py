@@ -44,7 +44,21 @@ def main():
     else:
         swc_filename = args.swc_file
 
-    cell_name = args.cell_name
+    if not os.path.exists(swc_filename):
+        print('%s: %s: no such file.' % (os.path.basename(sys.argv[0]), swc_filename))
+        sys.exit(1)
+
+    if not args.replace_axon:
+        morpho = np.loadtxt(swc_filename)
+        if np.min(np.abs(morpho[:,1] - 2)) > 0.5:
+            print('The cell has no axon: adding an AIS stub even though the --replace-axon option was not set.')
+            replace_axon = True
+        else:
+            replace_axon = False
+    else:
+        replace_axon = True
+
+        cell_name = args.cell_name
     if cell_name is None:
         cell_name = os.path.basename(swc_filename).split('.')[0].replace('-','_')
         if cell_name[0] in '1234567890':
@@ -92,7 +106,7 @@ def main():
         else:
             print('%s: %s: cannot find file.' % (os.path.basename(sys.argv[0]),f))
 
-    evaluator = dlopt.evaluator.create(cell_name, filenames, replace_axon=args.replace_axon, config_dir=args.config_dir)
+    evaluator = dlopt.evaluator.create(cell_name, filenames, replace_axon=replace_axon, config_dir=args.config_dir)
     print(evaluator.cell_model)
 
     seed = int(time.time())
@@ -115,7 +129,7 @@ def main():
     pickle.dump(evaluator, open(output_folder+'/evaluator.pkl','wb'))
     pickle.dump(logbook, open(output_folder+'/logbook.pkl','wb'))
     pickle.dump(history, open(output_folder+'/history.pkl','wb'))
-    pickle.dump({'seed': seed, 'replace_axon': args.replace_axon}, 
+    pickle.dump({'seed': seed, 'replace_axon': replace_axon},
                 open(output_folder+'/simulation_parameters.pkl','wb'))
 
 if __name__ == '__main__':
