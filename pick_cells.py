@@ -161,6 +161,8 @@ if __name__ == '__main__':
             print('----------------------------------')
             print('Individual %02d' % (i+1))
         good = True
+        check_spike_count = False
+        good_spike_count = None
         for step_name in resp:
             step = step_name.split('.')[0]
             if verbose:
@@ -175,7 +177,16 @@ if __name__ == '__main__':
             for name in feature_names:
                 m = features[step]['soma'][name][0]
                 s = features[step]['soma'][name][1]
-                err = np.abs(np.mean(feature_values[0][name]) - m) / s
+                try:
+                    err = np.abs(np.mean(feature_values[0][name]) - m) / s
+                except:
+                    err = err_max * 0.9
+                    check_spike_count = True
+                if name == 'Spikecount':
+                    if err <= err_max:
+                        good_spike_count = True
+                    else:
+                        good_spike_count = False
                 if err > err_max:
                     if not name in features_to_ignore:
                         good = False
@@ -185,6 +196,10 @@ if __name__ == '__main__':
                         print(colors.yellow('    %s = %g' % (name,err)))
                 elif verbose:
                     print(colors.green('    %s = %g' % (name,err)))
+        if check_spike_count and good_spike_count is not None and not good_spike_count:
+            # accept an individual that does not have the values of some features,
+            # as long as its spike count is lower than err_max
+            good = False
         if good:
             good_individuals_hof.append(i)
             print('Individual ' + colors.green('%03d'%(i+1)) + ' of the hall-of-fame ' + colors.green('matches') + ' the requisites.')
