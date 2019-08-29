@@ -14,6 +14,7 @@ from neuron import h
 from current_step import inject_current_step
 from utils import *
 
+efel.setThreshold(0)
 
 class ColorFactory:
     RED = '\033[91m'

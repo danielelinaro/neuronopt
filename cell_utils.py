@@ -241,10 +241,17 @@ class Cell (object):
             self.axonal_segments = []
         for sec in self.morpho.all:
             self.total_nseg += sec.nseg
+            n_points = sec.n3d()
+            xyz = np.r_[np.array([sec.x3d(i) for i in range(n_points)], ndmin=2), \
+                        np.array([sec.y3d(i) for i in range(n_points)], ndmin=2), \
+                        np.array([sec.z3d(i) for i in range(n_points)], ndmin=2)]
+            arc = np.array([sec.arc3d(i) for i in range(n_points)])
             for seg in sec:
+                idx = np.argmin(np.abs(arc - sec.L*seg.x))
                 segment = {'seg': seg, 'sec': sec, \
                            'area': h.area(seg.x,sec), \
-                           'dst': self.distance_from_soma(seg)}
+                           'dst': self.distance_from_soma(seg), \
+                           'center': xyz[:,idx]}
                 self.total_area += segment['area']
                 self.all_segments.append(segment)
                 if sec in self.morpho.soma:

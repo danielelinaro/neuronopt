@@ -304,7 +304,7 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out):
     pickle.dump(data,open(file_out,'wb'))
 
 
-def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
+def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate,offset=0):
     stim_end = stim_start + stim_dur
 
     data = ibw.load(file_in)
@@ -322,7 +322,7 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate):
     recording_dur = time[-1]
 
     if voltage_range[0] > -100 and (voltage_range[1] > efel.Settings().threshold and voltage_range[1] < 100):
-        plt.plot(time[idx],voltage[:,idx].T,lw=1)
+        plt.plot(time[idx],voltage[:,idx].T+offset,'k',lw=1)
 
     return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
 
@@ -591,6 +591,8 @@ def extract_features():
 
     plt.xlabel('Time (ms)')
     plt.ylabel('Voltage (mV)')
+    plt.plot([0,0],[-30,20],'k',lw=1)
+    plt.plot([0,100],[-30,-30],'k',lw=1)
     plt.savefig(folder+'/'+file_out.split('.pkl')[0]+'.pdf',dpi=300)
     if not args.quiet:
         plt.show()

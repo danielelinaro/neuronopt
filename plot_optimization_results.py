@@ -12,6 +12,8 @@ import bluepyopt.ephys as ephys
 from neuron import h
 from utils import *
 
+efel.setThreshold(0)
+
 files = {'results': {'hof_resp': 'hall_of_fame_responses.pkl',
                      'hof': 'hall_of_fame.pkl',
                      'final_pop': 'final_population.pkl',
@@ -147,7 +149,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
         for x,y in zip(X,Y):
             ax.add_patch(Rectangle((0,y-dy),x,2*dy,\
                                    edgecolor=green,facecolor=green,linewidth=1))
-        plt.plot([3,3],[np.min(Y)-1,np.max(Y)+1],'r--',lw=1)
+        plt.plot([5,5],[np.min(Y)-1,np.max(Y)+1],'r--',lw=1)
         plt.title(stepnum,fontsize=fnt)
         plt.xlabel('Objective value (# std)',fontsize=fnt)
         
@@ -165,7 +167,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
         else:
             plt.yticks(Y,[])
         
-        plt.axis([0,np.max([3.1,np.ceil(np.nanmax(X))]),np.min(Y)-1,np.max(Y)+1])
+        plt.axis([0,np.max([5.1,np.ceil(np.nanmax(X))]),np.min(Y)-1,np.max(Y)+1])
 
     blue = [.9,.9,1]
     ax = plt.axes([0.25,0.05,0.72,0.25])
