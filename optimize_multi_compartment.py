@@ -8,7 +8,7 @@ import numpy as np
 from numpy.random import poisson
 import bluepyopt
 import dlopt
-
+from cell_utils import morpho_has_axon
 
 def get_responses(evaluator, individuals, filename=None):
     responses = []
@@ -48,17 +48,13 @@ def main():
         print('%s: %s: no such file.' % (os.path.basename(sys.argv[0]), swc_filename))
         sys.exit(1)
 
-    if not args.replace_axon:
-        morpho = np.loadtxt(swc_filename)
-        if np.min(np.abs(morpho[:,1] - 2)) > 0.5:
-            print('The cell has no axon: adding an AIS stub even though the --replace-axon option was not set.')
-            replace_axon = True
-        else:
-            replace_axon = False
-    else:
+    if not args.replace_axon and not morpho_has_axon(swc_filename):
+        print('The cell has no axon: adding an AIS stub even though the --replace-axon option was not set.')
         replace_axon = True
+    else:
+        replace_axon = args.replace_axon
 
-        cell_name = args.cell_name
+    cell_name = args.cell_name
     if cell_name is None:
         cell_name = os.path.basename(swc_filename).split('.')[0].replace('-','_')
         if cell_name[0] in '1234567890':

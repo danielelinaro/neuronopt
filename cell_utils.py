@@ -9,6 +9,12 @@ h.load_file('stdrun.hoc')
 
 DEBUG = False
 
+def morpho_has_axon(swc_file):
+    morpho = np.loadtxt(swc_file)
+    if np.min(np.abs(morpho[:,1] - 2)) < 0.5:
+        return True
+    return False
+
 def compute_section_area(section):
     a = 0.
     for segment in section:
