@@ -9,11 +9,6 @@ h.load_file('stdrun.hoc')
 
 DEBUG = False
 
-def morpho_has_axon(swc_file):
-    morpho = np.loadtxt(swc_file)
-    if np.min(np.abs(morpho[:,1] - 2)) < 0.5:
-        return True
-    return False
 
 def compute_section_area(section):
     a = 0.
@@ -75,11 +70,19 @@ class Cell (object):
 
 
     @staticmethod
-    def set_nseg(morpho):
-        for sec in morpho.all:
-            sec.nseg = 1 + 2 * int(sec.L/40)
-            #sec.nseg = int((sec.L/(0.1*h.lambda_f(100,sec=sec))+0.9)/2)*2 + 1
-            #print('%s: length = %g um, nseg = %d.' % (sec.name(),sec.L,sec.nseg))
+    def set_nseg(morpho, use_dlambda_rule):
+        if use_dlambda_rule:
+            print('Setting the number of segments using the d_lambda rule.')
+            for sec in morpho.all:
+                sec.nseg = int((sec.L/(0.1*h.lambda_f(100,sec=sec))+0.9)/2)*2 + 1
+                if DEBUG:
+                    print('%s: length = %g um, nseg = %d.' % (sec.name(),sec.L,sec.nseg))
+        else:
+            print('Setting the number of segments using only section length.')
+            for sec in morpho.all:
+                sec.nseg = 1 + 2 * int(sec.L/40)
+                if DEBUG:
+                    print('%s: length = %g um, nseg = %d.' % (sec.name(),sec.L,sec.nseg))
 
 
     @staticmethod
@@ -119,18 +122,17 @@ class Cell (object):
         morpho.axon[0].connect(morpho.soma[0], 1.0, 0.0)
         morpho.axon[1].connect(morpho.axon[0], 1.0, 0.0)
 
-    def __init__(self, cell_name, morpho_file, parameters, mechanisms, set_nseg=True, replace_axon=False):
+
+    def __init__(self, cell_name, morpho_file, parameters, mechanisms):
         self.cell_name = cell_name
         self.morpho_file = morpho_file
         self.parameters = parameters
         self.mechanisms = mechanisms
         self.seclist_names = ['all', 'somatic', 'basal', 'apical', 'axonal', 'myelinated']
         self.secarray_names = ['soma', 'dend', 'apic', 'axon', 'myelin']
-        self.has_axon = True
-        self.do_set_nseg = set_nseg
-        self.do_replace_axon = replace_axon
 
-    def instantiate(self):
+
+    def instantiate(self, replace_axon=False, add_axon_if_missing=True, use_dlambda_rule=False):
         self.template = Cell.create_empty_template(self.cell_name,self.seclist_names,self.secarray_names)
         h(self.template)
         self.template_function = getattr(h, self.cell_name)
@@ -143,11 +145,26 @@ class Cell (object):
         self.gui = h.Import3d_GUI(self.import3d, 0)
         self.gui.instantiate(self.morpho)
 
-        if self.do_replace_axon:
+        n_axonal_sec = len([sec for sec in self.morpho.axonal])
+        if replace_axon:
+            if n_axonal_sec == 0:
+                print('The cell has no axon: adding an AIS stub.')
+            else:
+                print('Replacing existing axon with AIS stub.')
             Cell.replace_axon(self.morpho)
+        elif add_axon_if_missing:
+            if n_axonal_sec == 0:
+                print('The cell has no axon: adding an AIS stub.')
+                Cell.replace_axon(self.morpho)
+            else:
+                print('The cell has an axon: not replacing it with an AIS stub.')
+        elif n_axonal_sec == 0:
+            print('The cell has no axon: not replacing it with an AIS stub.')
+        else:
+            print('The cell has an axon: not replacing it with an AIS stub.')
 
-        if self.do_set_nseg:
-            Cell.set_nseg(self.morpho)
+        # this sets the number of segments in each section based only on length
+        Cell.set_nseg(self.morpho, use_dlambda_rule=False)
 
         self.n_somatic_sections = len([sec for sec in self.morpho.somatic])
         self.n_axonal_sections = len([sec for sec in self.morpho.axonal])
@@ -156,14 +173,20 @@ class Cell (object):
         self.n_myelinated_sections = len([sec for sec in self.morpho.myelinated])
         self.n_sections = len([sec for sec in self.morpho.all])
 
-        self.biophysics()
+        if self.n_axonal_sections > 0:
+            self.has_axon = True
+        else:
+            self.has_axon = False
+
+        self.biophysics(use_dlambda_rule)
 
         h.distance(0, 0.5, sec=self.morpho.soma[0])
         self.compute_total_area()
         self.compute_measures()
         self.compute_path_lengths()
 
-    def biophysics(self):
+
+    def biophysics(self, use_dlambda_rule):
 
         for reg,mechs in self.mechanisms.items():
             region = getattr(self.morpho,reg)
@@ -171,15 +194,13 @@ class Cell (object):
                 for mech in mechs:
                     sec.insert(mech)
 
-        ### uncomment the following if we're not setting the number of
-        ### segments based only on their length
-        #if self.do_set_nseg:
-        #    for param in self.parameters:
-        #        if param['param_name'] in ['cm','Ra','e_pas','g_pas']:
-        #            region = getattr(self.morpho,param['sectionlist'])
-        #            for sec in region:
-        #                setattr(sec,param['param_name'],param['value'])
-        #Cell.set_nseg(self.morpho)
+        if use_dlambda_rule:
+            for param in self.parameters:
+                if param['param_name'] in ['cm','Ra','e_pas','g_pas']:
+                    region = getattr(self.morpho,param['sectionlist'])
+                    for sec in region:
+                        setattr(sec,param['param_name'],param['value'])
+            Cell.set_nseg(self.morpho, use_dlambda_rule)
         
         for param in self.parameters:
             if param['type'] == 'global':
@@ -271,9 +292,10 @@ class Cell (object):
                     self.axonal_segments.append(segment)
         if DEBUG:
             print('Total area: %.0f um2.' % self.total_area)
-            print('Total number of segments: %d (%d somatic, %d apical, %d basal and %d axonal.' % \
+            n_axonal_segments = len(self.axonal_segments) if self.has_axon else 0
+            print('Total number of segments: %d (%d somatic, %d apical, %d basal and %d axonal.)' % \
                       (self.total_nseg,len(self.somatic_segments),len(self.apical_segments),\
-                           len(self.basal_segments),len(self.axonal_segments)))
+                           len(self.basal_segments),n_axonal_segments))
 
 
     def compute_path_lengths(self):

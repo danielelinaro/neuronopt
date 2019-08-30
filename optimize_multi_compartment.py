@@ -8,7 +8,7 @@ import numpy as np
 from numpy.random import poisson
 import bluepyopt
 import dlopt
-from cell_utils import morpho_has_axon
+
 
 def get_responses(evaluator, individuals, filename=None):
     responses = []
@@ -35,24 +35,40 @@ def main():
     parser.add_argument('-p', '--population-size', default=100, type=int, help='population size')
     parser.add_argument('-g', '--num-generation', default=100, type=int, help='number of generations')
     parser.add_argument('--replace-axon', action='store_true', help='replace the axon in the SWC file with an AIS stub')
+    parser.add_argument('--no-add-axon', action='store_true', help='do not add an AIS stub if the morphology lacks an axon')
     args = parser.parse_args(args=sys.argv[1:])
 
-    if args.swc_file.lower() in ('thorny','rs'):
-        swc_filename = '/Users/daniele/Postdoc/Research/Janelia/morphologies/FINAL/thorny/DH070813-.Edit.scaled.converted.swc'
-    elif args.swc_file.lower() in ('a-thorny','ib'):
-        swc_filename = '/Users/daniele/Postdoc/Research/Janelia/morphologies/FINAL/a-thorny/DH070613-1-.Edit.scaled.converted.swc'
-    else:
-        swc_filename = args.swc_file
+    if args.replace_axon and args.no_add_axon:
+        print('You cannot specify both --replace-axon and --no-add-axon.')
+        sys.exit(1)
+
+    swc_filename = args.swc_file
 
     if not os.path.exists(swc_filename):
         print('%s: %s: no such file.' % (os.path.basename(sys.argv[0]), swc_filename))
-        sys.exit(1)
+        sys.exit(2)
 
-    if not args.replace_axon and not morpho_has_axon(swc_filename):
-        print('The cell has no axon: adding an AIS stub even though the --replace-axon option was not set.')
-        replace_axon = True
+    morpho = np.loadtxt(swc_filename)
+    if np.min(np.abs(morpho[:,1] - 2)) < 0.5:
+        has_axon = True
     else:
-        replace_axon = args.replace_axon
+        has_axon = False
+
+    replace_axon = args.replace_axon
+    if replace_axon:
+        if has_axon:
+            print('The cell has an axon: replacing it with an AIS stub.')
+        else:
+            print('The cell has no axon: adding an AIS stub.')
+    else:
+        if has_axon:
+            print('The cell has an axon: not replacing it with an AIS stub.')
+        elif not args.no_add_axon:
+            print('The cell has no axon: adding an AIS stub even though the --replace-axon ' \
+                  'option was not set. To prevent this, use the --no-add-axon option.')
+            replace_axon = True
+        else:
+            print('The cell has no axon: not adding an AIS stub because the --no-add-axon option was set.')
 
     cell_name = args.cell_name
     if cell_name is None:
@@ -125,7 +141,7 @@ def main():
     pickle.dump(evaluator, open(output_folder+'/evaluator.pkl','wb'))
     pickle.dump(logbook, open(output_folder+'/logbook.pkl','wb'))
     pickle.dump(history, open(output_folder+'/history.pkl','wb'))
-    pickle.dump({'seed': seed, 'replace_axon': replace_axon},
+    pickle.dump({'seed': seed, 'replace_axon': replace_axon, 'no_add_axon': args.no_add_axon},
                 open(output_folder+'/simulation_parameters.pkl','wb'))
 
 if __name__ == '__main__':
