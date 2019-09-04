@@ -44,7 +44,8 @@ feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                  'BBP_CTX': ['AP_height', 'AHP_slow_time', 'ISI_CV',
                              'doublet_ISI','AHP_depth_abs_slow',
                              'AP_width','time_to_first_spike','AHP_depth_abs',
-                             'adaptation_index2','mean_frequency'],
+                             'adaptation_index2','mean_frequency','Spikecount',
+                             'voltage_base','voltage_deflection'],
                  'BBP_HPC': ['voltage_base', 'steady_state_voltage',
                              'voltage_deflection', 'voltage_deflection_begin',
                              'Spikecount', 'time_to_last_spike',
@@ -182,7 +183,7 @@ def write_features():
         stim_dur = data['stim_dur']
         stim_start = data['stim_start']
         features.append(data['features'])
-        rheobases.append(np.min(data['current_amplitudes']))
+        rheobases.append(np.min(data['current_amplitudes'][np.where(data['has_spikes'])[0]]))
         amplitudes.append(data['current_amplitudes'] - rheobases[-1])
     print('Mean rheobase: %g nA.' % np.mean(rheobases))
 
@@ -210,6 +211,11 @@ def write_features():
                     desired_amps[i,j] = amps[np.argmin(np.abs(amps - desired_amps[i,j]))]
     else:
         desired_amps = np.tile(np.array(desired_amps),(len(amplitudes),1))
+        for i in range(len(rheobases)):
+            desired_amps[i] -= rheobases[i]
+
+    # to uncomment only when running the command features_utils in control cells for the L5Dendrites project
+    #desired_amps[2][3:] -= 0.2
 
     RHEOBASE = np.mean(rheobases)
 
@@ -226,24 +232,32 @@ def write_features():
     #            item
     flatten = lambda l: [item for sublist in l if sublist is not None for item in sublist]
 
-    all_features = [{name: [] for name in feature_names[args.cell_type]} for i in range(nsteps)]
+    all_features = [{} for i in range(nsteps)]
     features_dict = {'Step%d'%i: {'soma': {}} for i in range(1,nsteps+1)}
     for name in feature_names[args.cell_type]:
         for i in range(len(args.files)):
             for j in range(nsteps):
                 idx, = np.where(np.abs(amplitudes[i] - desired_amps[i][j]) < 1e-6)
                 for k in idx:
-                    all_features[j][name].append(features[i][k][name])
+                    if name in features[i][k]:
+                        if not name in all_features[j]:
+                            all_features[j][name] = []
+                        all_features[j][name].append(features[i][k][name])
         for i in range(nsteps):
-            stepnum = 'Step%d' % (i+1)
-            all_features[i][name] = flatten(all_features[i][name])
-            if len(all_features[i][name]) > 0:
-                features_dict[stepnum]['soma'][name] = [np.mean(all_features[i][name]),
-                                                        np.std(all_features[i][name])]
-                if features_dict[stepnum]['soma'][name][1] == 0:
-                    features_dict[stepnum]['soma'][name][1] = np.abs(features_dict[stepnum]['soma'][name][0]/5)
-                    print(('Standard deviation of feature %s for %s is 0: ' + \
-                          'setting it to %g.') % (name,stepnum,features_dict[stepnum]['soma'][name][1]))
+            if name in all_features[i]:
+                stepnum = 'Step%d' % (i+1)
+                all_features[i][name] = flatten(all_features[i][name])
+                if len(all_features[i][name]) > 0:
+                    features_dict[stepnum]['soma'][name] = [np.mean(all_features[i][name]),
+                                                            np.std(all_features[i][name])]
+                    if features_dict[stepnum]['soma'][name][1] == 0:
+                        std = np.abs(features_dict[stepnum]['soma'][name][0]/5)
+                        if std == 0:
+                            features_dict[stepnum]['soma'].pop(name)
+                        else:
+                            features_dict[stepnum]['soma'][name][1] = std
+                            print(('Standard deviation of feature %s for %s is 0: ' + \
+                                   'setting it to %g.') % (name,stepnum,features_dict[stepnum]['soma'][name][1]))
 
     num_features = len(feature_names[args.cell_type])
     to_remove = []
@@ -299,7 +313,7 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out):
             plt.plot(time,Vc,'k',lw=1)
             plt.show()
     features = efel.getFeatureValues(traces,feature_names_full_set)
-    data = {'features': features, 'current_amplitudes': amplitudes, \
+    data = {'features': features, 'current_amplitudes': np.array(amplitudes), \
             'stim_dur': stim_dur, 'stim_start': stim_start}
     pickle.dump(data,open(file_out,'wb'))
 
@@ -332,29 +346,31 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         files_out = [files_out]
     if len(files_out) == 1:
         features = []
-        with_spikes = []
+        has_spikes = []
         offset = 0
         for i,f in enumerate(files_in):
             print('I = %g pA.' % current_amplitudes[i])
             feat,voltage_range,_ = extract_features_from_file(f,stim_dur,stim_start,sampling_rate)
-            try:
+            if 'Spikecount' in feat[0]:
                 # Spikecount feature is present
-                jdx, = np.where([fe['Spikecount'][0] for fe in feat])
-            except:
-                # Spikecount feature is absent
-                jdx, = np.where([not all(v is None or len(v) == 0 for v in fe.values()) for fe in feat])
+                with_spikes = [fe['Spikecount'][0] > 0 for fe in feat]
+            elif 'mean_frequency' in feat[0]:
+                # mean_frequency feature is present
+                with_spikes = [True if fe['mean_frequency'] is not None else False for fe in feat]
+            to_keep, = np.where([not all(v is None or len(v) == 0 for v in fe.values()) for fe in feat])
             if voltage_range[0] > -100 and (voltage_range[1] > efel.Settings().threshold
                                             and voltage_range[1] < 100):
-                for j in jdx:
-                    features.append(feat[j])
-                    with_spikes.append(offset + j)
+                for j in to_keep:
+                    features.append({k: v for k,v in feat[j].items() if v is not None and len(v) > 0})
+                    has_spikes.append(offset + with_spikes[j])
             offset += len(feat)
-        amplitudes = [current_amplitudes[i] for i in with_spikes]
+        amplitudes = [current_amplitudes[i] for i in to_keep]
         idx = np.argsort(amplitudes)
         amplitudes = [amplitudes[jdx] for jdx in idx]
         features = [features[jdx] for jdx in idx]
-        data = {'features': features, 'current_amplitudes': amplitudes, \
-                'stim_dur': stim_dur, 'stim_start': stim_start}
+        data = {'features': features, 'current_amplitudes': np.array(amplitudes), \
+                'stim_dur': stim_dur, 'stim_start': stim_start,
+                'has_spikes': np.array(has_spikes)}
         pickle.dump(data,open(files_out[0],'wb'))
     else:
         if len(files_out) == 0:
@@ -562,7 +578,7 @@ def extract_features():
         file_out = os.path.basename(filename).split('.')[0] + '.pkl'
         data = ibw.load(filename)
         Istep = args.Istep
-        nsteps = len(data['wave']['wData'])
+        nsteps = data['wave']['wData'].shape[1]
         if args.Imin is None:
             s = np.std(data['wave']['wData'],0)
             Imin = -args.Istep*np.argmin(s)
