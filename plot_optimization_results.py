@@ -58,6 +58,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
 
     features = {}
     features_std_units = {}
+    all_feature_names = []
     for proto,target_feature in target_features.items():
         feature_names = target_feature['soma'].keys()
         stim_start = evaluator.fitness_protocols[proto].stimuli[0].step_delay
@@ -72,6 +73,8 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
                                      if v is not None else None for k,v in feature_values.items()}
         print('%s:' % proto)
         for name,values in target_feature['soma'].items():
+            if not name in all_feature_names:
+                all_feature_names.append(name)
             if features[proto][name][0] is None:
                 print('\t%s: model: None. data: %g +- %g (std/mean: %g)' %
                       (name,values[0],values[1],values[1]/np.abs(values[0])))
@@ -80,19 +83,19 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
                       (name,features[proto][name][0],features_std_units[proto][name],
                        values[0],values[1],values[1]/np.abs(values[0])))
 
+    n_steps = len(responses[individual])
+
     if dump:
         fid = open('%s_individual_%d_errors.csv'%(os.path.basename(os.path.abspath('.')),individual),'w')
-        for k in features_std_units['Step3']:
+        for k in all_feature_names:
             fid.write('%s,' % k)
-            for i in range(1,3):
+            for i in range(1,n_steps+1):
                 try:
                     fid.write('%f,' % features_std_units['Step%d'%i][k])
                 except:
                     fid.write(',')
-            fid.write('%f\n' % features_std_units['Step3'][k])
+            fid.write('%f\n' % features_std_units['Step%d'%i][k])
         fid.close()
-
-    nsteps = len(responses[individual].keys())
 
     plt.figure()
     plt.axes([0.01,0.65,0.98,0.35])
@@ -134,8 +137,8 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     fnt = 9
     offset = 0.175
     space = 0.03
-    dx = (0.97 - offset - (nsteps-1)*space)/nsteps
-    all_feature_names = sorted(features_std_units['Step3'].keys())
+    dx = (0.97 - offset - (n_steps-1)*space)/n_steps
+    all_feature_names = sorted(all_feature_names)
     n_features = len(all_feature_names)
     Y = list(range(n_features,0,-1))
     dy = 0.3
