@@ -217,9 +217,6 @@ def write_features():
     # to uncomment only when running the command features_utils in control cells for the L5Dendrites project
     #desired_amps[2][3:] -= 0.2
 
-    # to uncomment only when running the command features_utils in control cells for the L5Dendrites project
-    #desired_amps[2][3:] -= 0.2
-
     # to uncomment only when running the command features_utils in RS alcohol cells for the L5Dendrites project
     #desired_amps[1][3:] -= 0.3
 
