@@ -33,18 +33,19 @@ def main():
         if sectionlist == 'global':
             for param_name, value in fixed_params[sectionlist]:
                 param = {
-                    'value': value,
                     'param_name': param_name,
-                    'type': 'global'}
+                    'type': 'global',
+                    'value': value
+                }
                 parameters.append(param)
         else:
             for param_name, value, dist_type in fixed_params[sectionlist]:
                 param = {
-                    'value': value,
                     'param_name': param_name,
+                    'sectionlist': sectionlist,
                     'type': 'section',
                     'dist_type': dist_type,
-                    'sectionlist': sectionlist
+                    'value': value
                 }
                 parameters.append(param)
 
@@ -52,12 +53,12 @@ def main():
         for mech, param_name, min_bound, max_bound, dist_type in \
                 params[sectionlist]:
             param = {
-                'bounds': [min_bound, max_bound],
-                'mech': mech,
-                'mech_param': param_name,
                 'param_name': '%s_%s' % (param_name, mech),
-                'type': 'range',
+                'mech': mech,
+                'bounds': [min_bound, max_bound],
                 'dist_type': dist_type,
+                'mech_param': param_name,
+                'type': 'range',
                 'sectionlist': sectionlist
             }
 
