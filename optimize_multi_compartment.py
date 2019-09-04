@@ -94,7 +94,7 @@ def main():
     if args.no_mech_file:
         filenames['mechanisms'] = ''
     else:
-        filenames['mechanisms'] = ''.join(args.mechanisms.split('.')[:-1]) + suffix + '.' + args.mechanisms.split('.')[-1],
+        filenames['mechanisms'] = ''.join(args.mechanisms.split('.')[:-1]) + suffix + '.' + args.mechanisms.split('.')[-1]
 
     time.sleep(poisson(10))
     while True:
