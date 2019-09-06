@@ -1,0 +1,62 @@
+{
+"c110131_a_x40_1": {
+    "mechanisms": {
+        "basal":   ["Ih"], 
+        "all":     ["pas"], 
+        "apical":  ["Ih", "Im", "SKv3_1", "NaTs2_t"], 
+        "axonal":  ["Ca_LVAst", "Ca_HVA", "CaDynamics_E2", "SKv3_1", "SK_E2", "K_Tst", "K_Pst", "Nap_Et2", "NaTa_t"], 
+        "somatic": ["NaTs2_t", "SKv3_1", "SK_E2", "CaDynamics_E2", "Ca_HVA", "Ca_LVAst", "Ih"]
+    }, 
+    "distributions": {
+        "exp": "(-0.8696 + 2.087*math.exp(({distance})*0.0031))*{value}"
+    }, 
+    "fixed": {
+        "global":   [["v_init", -65], ["celsius", 34]], 
+        "axonal":   [["cm", 1, "secvar"], ["ena", 50, "secvar"], ["ek", -85, "secvar"]],
+        "somatic":  [["cm", 1, "secvar"], ["ena", 50, "secvar"], ["ek", -85, "secvar"]],
+        "apical":   [["cm", 1, "secvar"], ["ena", 50, "secvar"], ["ek", -85, "secvar"]],
+        "alldend":  [["cm", 2, "secvar"]]
+    }, 
+    "optimized": {
+        "axonal": [
+            ["gNaTa_tbar_NaTa_t", 0, 4, "uniform"],
+            ["gNap_Et2bar_Nap_Et2", 0, 4, "uniform"],
+            ["gK_Pstbar_K_Pst", 0, 1, "uniform"],
+            ["gK_Tstbar_K_Tst", 0, 0.1, "uniform"],
+            ["gSK_E2bar_SK_E2", 0, 0.1, "uniform"],
+            ["gSKv3_1bar_SKv3_1", 0, 2, "uniform"],
+            ["gCa_HVAbar_Ca_HVA", 0, 0.001, "uniform"],
+            ["gCa_LVAstbar_Ca_LVAst", 0, 0.01, "uniform"],
+            ["gamma_CaDynamics_E2", 0.0005, 0.05, "uniform"],
+            ["decay_CaDynamics_E2", 20, 1000, "uniform"],
+            ["Ra", 50, 100, "secvar"],
+            ["g_pas", 2e-5, 20e-5, "uniform" ],
+            ["e_pas", -80, -50, "uniform" ]
+        ], 
+        "somatic": [
+            ["gNaTs2_tbar_NaTs2_t", 0, 1, "uniform"],
+            ["gSKv3_1bar_SKv3_1", 0, 1, "uniform"],
+            ["gSK_E2bar_SK_E2", 0, 0.1, "uniform"],
+            ["gCa_HVAbar_Ca_HVA", 0, 0.001, "uniform"],
+            ["gCa_LVAstbar_Ca_LVAst", 0, 0.01, "uniform"],
+            ["gamma_CaDynamics_E2", 0.0005, 0.05, "uniform"],
+            ["decay_CaDynamics_E2", 20, 1000, "uniform"],
+            ["gIhbar_Ih", 7.999e-05, 8.001e-05, "uniform"]
+        ],
+        "allnoaxon": [
+            ["Ra", 100, 400, "secvar"],
+            ["g_pas", 0.5e-5, 15e-5, "uniform" ],
+            ["e_pas", -80, -55, "uniform" ]
+        ],
+        "basal": [
+            ["gIhbar_Ih", 7.999e-05, 8.001e-05, "uniform"]
+        ], 
+        "apical": [
+            ["gNaTs2_tbar_NaTs2_t", 0, 0.04, "uniform"],
+            ["gSKv3_1bar_SKv3_1", 0, 0.04, "uniform"],
+            ["gImbar_Im", 0, 0.001, "uniform"],
+            ["gIhbar_Ih", 7.999e-05, 8.001e-05, "exp"]
+        ]
+    }
+}
+}
