@@ -48,8 +48,8 @@ def worker(cell_id, args):
     I = args['I']
     stim_dur = args['stim_dur']
     stim_start = args['stim_start']
-    feature_names = args['feature_names']
-    feature_reference_values = args['feature_reference_values']
+    target_features = args['target_features']
+    protocols_names = args['protocols_names']
     err_max = args['err_max']
     verbose = args['verbose']
     individual = final_pop[cell_id]
@@ -74,6 +74,7 @@ def worker(cell_id, args):
                                         mechanisms, cell_name, do_plot=False)
         h('forall delete_section()')
         trace = {'T': recorders['t'], 'V': recorders['Vsoma'], 'stim_start': [stim_start], 'stim_end': [stim_end]}
+        feature_names = target_features[protocols_names[i]]['soma'].keys()
         feature_values = efel.getFeatureValues([trace],feature_names)
         for name in feature_names:
             if feature_values[0][name] is None:
@@ -81,8 +82,8 @@ def worker(cell_id, args):
                     print(colors.red('[%d] %s is None.' % (cell_id,name)))
                 good = False
                 continue
-            m = feature_reference_values[name][i][0]
-            s = feature_reference_values[name][i][1]
+            m = target_features[protocols_names[i]]['soma'][name][0]
+            s = target_features[protocols_names[i]]['soma'][name][1]
             err = np.abs(np.mean(feature_values[0][name]) - m) / s
             if err > err_max:
                 if verbose:
@@ -92,10 +93,10 @@ def worker(cell_id, args):
                 print(colors.green('[%d] %s = %g' % (cell_id,name,err)))
 
         if not good:
-            print('Individual ' + colors.red('%03d does not match' % (cell_id+1)) + ' the requisites')
+            print('Individual ' + colors.red('%03d does not match' % (cell_id+1)) + ' the requisites.')
             return False
 
-    print('Individual ' + colors.green('%03d matches'%(cell_id+1)) + ' the requisites')
+    print('Individual ' + colors.green('%03d matches'%(cell_id+1)) + ' the requisites.')
     return True
 
 
@@ -153,7 +154,7 @@ if __name__ == '__main__':
     n_individuals,n_parameters = final_pop.shape
     evaluator = pickle.load(open(folder + '/evaluator.pkl', 'rb'))
     protocols = json.load(open(folder + '/protocols.json'))
-    features = json.load(open(folder + '/features.json','r'))
+    target_features = json.load(open(folder + '/features.json','r'))
 
     good_individuals_hof = []
     for individual,(i,resp) in zip(hof,enumerate(hof_responses)):
@@ -172,11 +173,11 @@ if __name__ == '__main__':
             trace = {'T': resp[step+'.soma.v']['time'],
                      'V': resp[step+'.soma.v']['voltage'],
                      'stim_start': [stim_start], 'stim_end': [stim_end]}
-            feature_names = [key for key in features[step]['soma']]
+            feature_names = [key for key in target_features[step]['soma']]
             feature_values = efel.getFeatureValues([trace],feature_names)
             for name in feature_names:
-                m = features[step]['soma'][name][0]
-                s = features[step]['soma'][name][1]
+                m = target_features[step]['soma'][name][0]
+                s = target_features[step]['soma'][name][1]
                 try:
                     err = np.abs(np.mean(feature_values[0][name]) - m) / s
                 except:
@@ -238,19 +239,14 @@ if __name__ == '__main__':
             config = json.load(open(config_file,'r'))[cell_name]
             mechs = extract_mechanisms(config_file, cell_name)
 
-        k = list(protocols.keys())[0]
-        feature_names = [key for key in features[k]['soma'] if not key in features_to_ignore and \
-                         (len(features_to_consider) == 0 or key in features_to_consider)]
-        feature_reference_values = {feature: [] for feature in feature_names}
-        for feature in feature_names:
-            for step in protocols:
-                feature_reference_values[feature].append(features[step]['soma'][feature])
+        protocols_names = list(protocols.keys())
+        k = protocols_names[0]
         stim_dur = protocols[k]['stimuli'][0]['duration']
         stim_start = protocols[k]['stimuli'][0]['delay']
         I = [proto['stimuli'][0]['amp']*1e3 for _,proto in protocols.items()]
         idx = argsort(I)
         I = [I[i] for i in idx]
-        feature_reference_values = {feature: [feature_reference_values[feature][i] for i in idx] for feature in feature_names}
+        protocols_names = [protocols_names[i] for i in idx]
 
         args = {'swc_file': swc_file,
                 'final_pop': final_pop,
@@ -259,8 +255,8 @@ if __name__ == '__main__':
                 'stim_dur': stim_dur,
                 'stim_start': stim_start,
                 'mechs': mechs,
-                'feature_names': feature_names,
-                'feature_reference_values': feature_reference_values,
+                'target_features': target_features,
+                'protocols_names': protocols_names,
                 'err_max': err_max,
                 'verbose': verbose}
 
