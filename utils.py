@@ -13,6 +13,7 @@ def extract_mechanisms(params_file, cell_name):
 
 
 def build_parameters_dict(individuals, evaluator, config=None, default_parameters=None):
+    import ipdb
 
     cells = []
 
@@ -34,15 +35,35 @@ def build_parameters_dict(individuals, evaluator, config=None, default_parameter
                 if param_type == 'global':
                     for par in params:
                         parameters.append({'param_name': par[0], 'value': par[1], 'type': 'global'})
-                elif param_type == 'all':
+                elif param_type in ('somatic', 'axonal', 'apical', 'basal', 'all'):
                     for par in params:
                         param = {'param_name': par[0], 'value': par[1], 'type': 'section',
-                                 'dist_type': 'uniform', 'sectionlist': 'all'}
+                                 'dist_type': 'uniform', 'sectionlist': param_type}
                         if par[2] != 'secvar':
                             print('I do not know how to deal with a fixed parameter of dist_type "{}".'.format(par[2]))
-                            import ipdb
                             ipdb.set_trace()
                         parameters.append(param)
+                elif param_type == 'alldend':
+                    for par_type in ('basal', 'apical'):
+                        for par in params:
+                            param = {'param_name': par[0], 'value': par[1], 'type': 'section',
+                                     'dist_type': 'uniform', 'sectionlist': par_type}
+                            if par[2] != 'secvar':
+                                print('I do not know how to deal with a fixed parameter of dist_type "{}".'.format(par[2]))
+                                ipdb.set_trace()
+                            parameters.append(param)
+                elif param_type == 'allnoaxon':
+                    for par_type in ('somatic', 'basal', 'apical'):
+                        for par in params:
+                            param = {'param_name': par[0], 'value': par[1], 'type': 'section',
+                                     'dist_type': 'uniform', 'sectionlist': par_type}
+                            if par[2] != 'secvar':
+                                print('I do not know how to deal with a fixed parameter of dist_type "{}".'.format(par[2]))
+                                ipdb.set_trace()
+                            parameters.append(param)
+                else:
+                    print('Unknown fixed parameter type: "{}".'.format(param_type))
+                    ipdb.set_trace()
             for section_list,params in config['optimized'].items():
                 for par in params:
                     param_name = par[0]
