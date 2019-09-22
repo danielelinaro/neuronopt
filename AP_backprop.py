@@ -291,9 +291,10 @@ if __name__ == '__main__':
             folder,_ = os.path.split(params_files[0])
         if folder == '':
             folder = '.'
-        output_file = folder + '/AP_backpropagation.pkl'
+        pkl_output_file = folder + '/AP_backpropagation.pkl'
     else:
-        output_file = args.output
+        pkl_output_file = args.output
+    pdf_output_file = os.path.splitext(pkl_output_file)[0] + '.pdf'
 
     I = args.I
     dur = args.dur
@@ -309,7 +310,7 @@ if __name__ == '__main__':
     for expt in data:
         expt.pop('t')
         expt.pop('Vm')
-    pickle.dump(data, open(output_file,'wb'))
+    pickle.dump(data, open(pkl_output_file,'wb'))
 
     normalize_distances = False
     
@@ -373,7 +374,6 @@ if __name__ == '__main__':
     fig = plt.figure(figsize=(x_size,y_size))
     ax1 = plt.axes([0.1,0.1,x_width,y_width])
 
-    
     points = np.r_[data[0]['centers']['somatic'], data[0]['centers']['axonal'], \
                    data[0]['centers']['basal'], data[0]['centers']['apical']]
     max_amplitude = np.max([np.max([np.max(v) for v in expt['AP_amplitudes'].values()]) for expt in data])
@@ -399,5 +399,5 @@ if __name__ == '__main__':
     population = data['good_population'].T
     plot_parameters_map(population, evaluator, config[cell_name], ax2)
     
-    plt.savefig('AP_backpropagation.pdf')
+    plt.savefig(pdf_output_file)
 
