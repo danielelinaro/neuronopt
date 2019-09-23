@@ -184,7 +184,7 @@ def plot_means_with_errorbars(x, y, color='k', label='', mode='sem', ax=None):
     ax.plot(x, Ym, 'o-', color=color, lw=2, label=label)
 
 
-def plot_parameters_map(population, evaluator, config, ax):
+def plot_parameters_map(population, evaluator, config, ax, sort_parameters=True, parameter_names_on_ticks=True):
     n_parameters,n_individuals = population.shape
 
     bounds = {}
@@ -199,28 +199,37 @@ def plot_parameters_map(population, evaluator, config, ax):
     for i,name in enumerate(evaluator.param_names):
         normalized[i,:] = (population[i,:] - bounds[name][0]) / (bounds[name][1] - bounds[name][0])
 
-    m = np.mean(normalized, axis=1)
-
-    idx = np.argsort(m)[::-1]
-    normalized_sorted_by_mean = normalized[idx,:].copy()
-    population_sorted_by_mean = population[idx,:].copy()
-    param_names_sorted_by_mean = [evaluator.param_names[i] for i in idx]
-    s = np.std(normalized_sorted_by_mean, axis=1)
-
-    for i,name in enumerate(param_names_sorted_by_mean):
-        if 'bar' in name:
-            param_names_sorted_by_mean[i] = name.split('bar_')[1]
-
-    img = ax.imshow(normalized_sorted_by_mean, cmap='jet')
+    if sort_parameters:
+        m = np.mean(normalized, axis=1)
+        idx = np.argsort(m)[::-1]
+        normalized_sorted_by_mean = normalized[idx,:].copy()
+        s = np.std(normalized_sorted_by_mean, axis=1)
+        param_names_sorted_by_mean = [evaluator.param_names[i] for i in idx]
+        for i,name in enumerate(param_names_sorted_by_mean):
+            if 'bar' in name:
+                param_names_sorted_by_mean[i] = name.split('bar_')[1]
+        img = ax.imshow(normalized_sorted_by_mean, cmap='jet')
+    else:
+        s = np.std(normalized, axis=1)
+        img = ax.imshow(normalized, cmap='jet')
 
     ax.set_xlabel('Individual #')
-    ax.set_xticks(range(n_individuals))
-    ax.set_xticklabels(1+np.arange(n_individuals))
-    ax.set_yticks(range(n_parameters))
-    ax.set_xticklabels(1+np.arange(n_parameters))
-    #for i in range(n_parameters):
-    #    if s[i] < 0.2:
-    #        ax.get_yticklabels()[i].set_color('red')
+
+    if n_individuals < 20:
+        ax.set_xticks(range(n_individuals))
+        ax.set_xticklabels(1+np.arange(n_individuals))
+
+    ax.set_yticks(1+np.arange(n_parameters))
+    if parameter_names_on_ticks:
+        if sort_parameters:
+            ax.set_yticklabels(param_names)
+        else:
+            ax.set_yticklabelss(evaluator.param_names)
+        for i in range(n_parameters):
+            if s[i] < 0.2:
+                ax.get_yticklabels()[i].set_color('red')
+    else:
+        ax.set_yticklabels(range(n_parameters))
 
 
 def set_rc_defaults():
@@ -369,22 +378,21 @@ if __name__ == '__main__':
     y_size = (y_lim[1] - y_lim[0]) / 300
     x_size *= (y_width / x_width)
 
-    offset = [0,0,0]
-        
+    offset = np.zeros(3)
+
     fig = plt.figure(figsize=(x_size,y_size))
     ax1 = plt.axes([0.1,0.1,x_width,y_width])
 
-    points = np.r_[data[0]['centers']['somatic'], data[0]['centers']['axonal'], \
-                   data[0]['centers']['basal'], data[0]['centers']['apical']]
-    max_amplitude = np.max([np.max([np.max(v) for v in expt['AP_amplitudes'].values()]) for expt in data])
-    min_amplitude = np.min([np.min([np.min(v) for v in expt['AP_amplitudes'].values()]) for expt in data])
+    max_amp = np.max([np.max([np.max(v) for v in expt['AP_amplitudes'].values()]) for expt in data])
+    min_amp = np.min([np.min([np.min(v) for v in expt['AP_amplitudes'].values()]) for expt in data])
     for i,expt in enumerate(data):
+        points = np.r_[expt['centers']['somatic'], expt['centers']['axonal'], \
+                       expt['centers']['basal'], expt['centers']['apical']] + offset
         amp = np.r_[expt['AP_amplitudes']['somatic'], expt['AP_amplitudes']['axonal'], \
                     expt['AP_amplitudes']['basal'], expt['AP_amplitudes']['apical']]
-        amp = (amp - min_amplitude) / (max_amplitude - min_amplitude)
+        amp = (amp - min_amp) / (max_amp - min_amp)
         interp = NearestNDInterpolator(points, amp)
-        print('amp = {%.3f,%.3f}' % (np.min(amp),np.max(amp)))
-        btmorph.plot_2D_SWC(swc_file, color_fun=lambda pt: cm.jet(interp(pt))[0][:3], offset=offset, \
+        btmorph.plot_2D_SWC(swc_file, color_fun=lambda pt: cm.jet(interp(pt))[0][:3], offset=offset.tolist(), \
                             new_fig=False, filter=[1,3,4], tight=False)
         offset[0] += dx
         if (i+1) % cols == 0:
@@ -397,7 +405,7 @@ if __name__ == '__main__':
     ax2 = plt.axes([0.1+x_width+0.05, 0.1, 0.2, y_width])
     data = pickle.load(open(args.pickle_file,'rb'))
     population = data['good_population'].T
-    plot_parameters_map(population, evaluator, config[cell_name], ax2)
+    plot_parameters_map(population, evaluator, config[cell_name], ax2, sort_parameters=False, parameter_names_on_ticks=False)
     
     plt.savefig(pdf_output_file)
 
