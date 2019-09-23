@@ -216,10 +216,10 @@ def plot_parameters_map(population, evaluator, config, ax, sort_parameters=True,
     ax.set_xlabel('Individual #')
 
     if n_individuals < 20:
-        ax.set_xticks(range(n_individuals))
+        ax.set_xticks(np.arange(n_individuals))
         ax.set_xticklabels(1+np.arange(n_individuals))
 
-    ax.set_yticks(1+np.arange(n_parameters))
+    ax.set_yticks(np.arange(n_parameters))
     if parameter_names_on_ticks:
         if sort_parameters:
             ax.set_yticklabels(param_names)
@@ -229,7 +229,7 @@ def plot_parameters_map(population, evaluator, config, ax, sort_parameters=True,
             if s[i] < 0.2:
                 ax.get_yticklabels()[i].set_color('red')
     else:
-        ax.set_yticklabels(range(n_parameters))
+        ax.set_yticklabels(1+np.arange(n_parameters))
 
 
 def set_rc_defaults():
