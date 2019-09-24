@@ -6,7 +6,7 @@ import pickle
 import argparse as arg
 import numpy as np
 from random import randint
-import cell_utils as cu
+from . import cell_utils as cu
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -184,7 +184,7 @@ def plot_means_with_errorbars(x, y, color='k', label='', mode='sem', ax=None):
     ax.plot(x, Ym, 'o-', color=color, lw=2, label=label)
 
 
-def plot_parameters_map(population, evaluator, config, ax, sort_parameters=True, parameter_names_on_ticks=True):
+def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sort_parameters=True, parameter_names_on_ticks=True):
     n_parameters,n_individuals = population.shape
 
     bounds = {}
@@ -198,6 +198,9 @@ def plot_parameters_map(population, evaluator, config, ax, sort_parameters=True,
     pop_minima = np.min(population,axis=1)
     for i,name in enumerate(evaluator.param_names):
         normalized[i,:] = (population[i,:] - bounds[name][0]) / (bounds[name][1] - bounds[name][0])
+
+    if ax is None:
+        ax = plt.gca()
 
     if sort_parameters:
         m = np.mean(normalized, axis=1)
@@ -213,16 +216,29 @@ def plot_parameters_map(population, evaluator, config, ax, sort_parameters=True,
         s = np.std(normalized, axis=1)
         img = ax.imshow(normalized, cmap='jet')
 
-    ax.set_xlabel('Individual #')
-
-    if n_individuals < 20:
+    if groups is not None:
+        borders, = np.where(groups[:-1] != groups[1:])
+        borders_idx = np.where(groups[borders] == 0)[0][1:]
+        for i in borders:
+            if i in borders[borders_idx]:
+                ls = '-'
+                lw = 2
+            else:
+                ls = '--'
+                lw = 1
+            ax.plot([i,i], [0,n_parameters-1], 'w'+ls, linewidth=lw)
+        ax.set_xticks(np.append(borders,n_individuals-1))
+        ax.set_xticklabels(np.append(borders+1,n_individuals))
+    elif n_individuals < 20:
         ax.set_xticks(np.arange(n_individuals))
         ax.set_xticklabels(1+np.arange(n_individuals))
+
+    ax.set_xlabel('Individual #')
 
     ax.set_yticks(np.arange(n_parameters))
     if parameter_names_on_ticks:
         if sort_parameters:
-            ax.set_yticklabels(param_names)
+            ax.set_yticklabels(param_names_sorted_by_mean, fontsize=7)
         else:
             ax.set_yticklabelss(evaluator.param_names)
         for i in range(n_parameters):
