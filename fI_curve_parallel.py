@@ -38,8 +38,8 @@ def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_fil
         default_parameters = None
         config = json.load(open(config_file,'r'))[cell_name]
 
-    import utils
-    return utils.build_parameters_dict(population, evaluator, config, default_parameters)
+    import dlutils
+    return dlutils.build_parameters_dict(population, evaluator, config, default_parameters)
 
 
 def plot_means_with_sem(x,y,color='k',label=''):
@@ -97,9 +97,9 @@ if __name__ == '__main__':
         if not new_config_style:
             print('You must provide the --mech-file option if no configuration file is specified.')
             sys.exit(1)
-        import utils
+        import dlutils
         cell_name = args.cell_name
-        mechanisms = utils.extract_mechanisms(args.config_file, cell_name)
+        mechanisms = dlutils.extract_mechanisms(args.config_file, cell_name)
     else:
         cell_name = None
         mechanisms = json.load(open(args.mech_file,'r'))

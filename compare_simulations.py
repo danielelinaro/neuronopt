@@ -10,9 +10,7 @@ import matplotlib.pyplot as plt
 
 from bluepyopt.ephys.simulators import NrnSimulator
 
-if not '/Users/daniele/Postdoc/Research/Janelia/neuronopt' in sys.path:
-    sys.path.append('/Users/daniele/Postdoc/Research/Janelia/neuronopt')
-import cell_utils as cu
+from dlutils import cell as cu
 
 progname = os.path.basename(sys.argv[0])
 

@@ -5,8 +5,8 @@ import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
 from neuron import h
-import synapse_utils as su
-import utils
+from dlutils import synapse as su
+from dlutils import utils
 import pickle
 import json
 import tables as tbl
