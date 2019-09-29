@@ -6,13 +6,14 @@ import pickle
 import argparse as arg
 import numpy as np
 from random import randint
-from dlutils import cell as cu
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import btmorph
 from scipy.interpolate import NearestNDInterpolator
 
+from dlutils import cell as cu
+import dlutils as dl
 import neuron
 
 use_scoop = True
@@ -59,9 +60,12 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
                  'apical': np.array([seg['dst'] for seg in cell.apical_segments])}
 
     centers = {'somatic': np.array([seg['center'] for seg in cell.somatic_segments]),
-               'axonal': np.array([seg['center'] for seg in cell.axonal_segments]),
                'basal': np.array([seg['center'] for seg in cell.basal_segments]),
                'apical': np.array([seg['center'] for seg in cell.apical_segments])}
+    try:
+        centers['axonal'] = np.array([seg['center'] for seg in cell.axonal_segments])
+    except:
+        centers['axonal'] = np.array([[0,seg['dst'],0] for seg in cell.axonal_segments])
                  
     recorders = {'spike_times': h.Vector(), 't': h.Vector()}
     apc = h.APCount(cell.morpho.soma[0](0.5))
@@ -151,99 +155,9 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
             't': t[idx], 'Vm': Vm}
 
 
-def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_file='evaluator.pkl'):
-    try:
-        data = pickle.load(open(pkl_file,'rb'))
-        population = data['good_population']
-    except:
-        population = np.array(pickle.load(open(pkl_file,'rb'), encoding='latin1'))
-
-    evaluator = pickle.load(open(evaluator_file,'rb'))
-
-    if cell_name is None:
-        default_parameters = json.load(open(parameters_file,'r'))
-        config = None
-    else:
-        default_parameters = None
-        config = json.load(open(config_file,'r'))[cell_name]
-
-    import dlutils
-    return dlutils.build_parameters_dict(population, evaluator, config, default_parameters)
-
-
-def plot_means_with_errorbars(x, y, color='k', label='', mode='sem', ax=None):
-    if ax is None:
-        ax = plt.gca()
-    Ym = np.nanmean(y,axis=0)
-    if mode == 'sem':
-        Ys = np.nanstd(y,axis=0) / np.sqrt(y.shape[0])
-    else:
-        Ys = np.nanstd(y,axis=0)
-    for i,ym,ys in zip(x,Ym,Ys):
-        ax.plot([i,i], [ym-ys,ym+ys], color=color, lw=2)
-    ax.plot(x, Ym, 'o-', color=color, lw=2, label=label)
-
-
-def plot_parameters_map(population, evaluator, config, ax, sort_parameters=True, parameter_names_on_ticks=True):
-    n_parameters,n_individuals = population.shape
-
-    bounds = {}
-    for region,params in config['optimized'].items():
-        for param in params:
-            param_name = param[0] + '.' + region
-            bounds[param_name] = np.array([param[1],param[2]])
-
-    normalized = np.zeros(population.shape)
-    pop_maxima = np.max(population,axis=1)
-    pop_minima = np.min(population,axis=1)
-    for i,name in enumerate(evaluator.param_names):
-        normalized[i,:] = (population[i,:] - bounds[name][0]) / (bounds[name][1] - bounds[name][0])
-
-    if sort_parameters:
-        m = np.mean(normalized, axis=1)
-        idx = np.argsort(m)[::-1]
-        normalized_sorted_by_mean = normalized[idx,:].copy()
-        s = np.std(normalized_sorted_by_mean, axis=1)
-        param_names_sorted_by_mean = [evaluator.param_names[i] for i in idx]
-        for i,name in enumerate(param_names_sorted_by_mean):
-            if 'bar' in name:
-                param_names_sorted_by_mean[i] = name.split('bar_')[1]
-        img = ax.imshow(normalized_sorted_by_mean, cmap='jet')
-    else:
-        s = np.std(normalized, axis=1)
-        img = ax.imshow(normalized, cmap='jet')
-
-    ax.set_xlabel('Individual #')
-
-    if n_individuals < 20:
-        ax.set_xticks(np.arange(n_individuals))
-        ax.set_xticklabels(1+np.arange(n_individuals))
-
-    ax.set_yticks(np.arange(n_parameters))
-    if parameter_names_on_ticks:
-        if sort_parameters:
-            ax.set_yticklabels(param_names)
-        else:
-            ax.set_yticklabelss(evaluator.param_names)
-        for i in range(n_parameters):
-            if s[i] < 0.2:
-                ax.get_yticklabels()[i].set_color('red')
-    else:
-        ax.set_yticklabels(1+np.arange(n_parameters))
-
-
-def set_rc_defaults():
-    plt.rc('font', family='Arial', size=10)
-    plt.rc('lines', linewidth=1, color='k')
-    plt.rc('axes', linewidth=1, titlesize='medium', labelsize='medium')
-    plt.rc('xtick', direction='out')
-    plt.rc('ytick', direction='out')
-    #plt.rc('figure', dpi=300)
-
-
 if __name__ == '__main__':
 
-    set_rc_defaults()
+    dl.set_rc_defaults()
 
     parser = arg.ArgumentParser(description='Record back-propagating APs in a cell apical dendrites.')
     parser.add_argument('I', type=float, action='store', help='current value in pA')
@@ -278,9 +192,8 @@ if __name__ == '__main__':
         if not new_config_style:
             print('You must provide the --mech-file option if no configuration file is specified.')
             sys.exit(1)
-        import dlutils
         cell_name = args.cell_name
-        mechanisms = dlutils.extract_mechanisms(args.config_file, cell_name)
+        mechanisms = dl.extract_mechanisms(args.config_file, cell_name)
     else:
         cell_name = None
         mechanisms = json.load(open(args.mech_file,'r'))
@@ -291,7 +204,7 @@ if __name__ == '__main__':
         if len(params_files) > 1:
             print('You cannot specify multiple parameter files and one pickle file.')
             sys.exit(1)
-        population = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
+        population = dl.individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
 
     if args.output == '':
         if args.pickle_file != '':
@@ -398,6 +311,7 @@ if __name__ == '__main__':
         if (i+1) % cols == 0:
             offset[1] += dy
             offset[0] = 0
+        break
 
     ax1.set_xlim(x_lim)
     ax1.set_ylim(y_lim)
@@ -405,7 +319,7 @@ if __name__ == '__main__':
     ax2 = plt.axes([0.1+x_width+0.05, 0.1, 0.2, y_width])
     data = pickle.load(open(args.pickle_file,'rb'))
     population = data['good_population'].T
-    plot_parameters_map(population, evaluator, config[cell_name], ax2, sort_parameters=False, parameter_names_on_ticks=False)
+    dl.plot_parameters_map(population, evaluator, config[cell_name], ax2, sort_parameters=False, parameter_names_on_ticks=False)
     
     plt.savefig(pdf_output_file)
 

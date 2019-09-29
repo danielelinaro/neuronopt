@@ -2,7 +2,7 @@
 import json
 import numpy as np
 
-__all__ = ['extract_mechanisms', 'build_parameters_dict', 'write_parameters']
+__all__ = ['extract_mechanisms', 'build_parameters_dict', 'write_parameters', 'individuals_from_pickle']
 
 def extract_mechanisms(params_file, cell_name):
     mechs = json.load(open(params_file,'r'))[cell_name]['mechanisms']
@@ -122,6 +122,25 @@ def write_parameters(individuals, evaluator, config, default_parameters, out_fil
             json.dump(params,open('individual_%d.json'%i,'w'),indent=4)
         else:
             json.dump(params,open(out_files[i],'w'),indent=4)
+
+
+def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_file='evaluator.pkl'):
+    try:
+        data = pickle.load(open(pkl_file,'rb'))
+        population = data['good_population']
+    except:
+        population = np.array(pickle.load(open(pkl_file,'rb'), encoding='latin1'))
+
+    evaluator = pickle.load(open(evaluator_file,'rb'))
+
+    if cell_name is None:
+        default_parameters = json.load(open(parameters_file,'r'))
+        config = None
+    else:
+        default_parameters = None
+        config = json.load(open(config_file,'r'))[cell_name]
+
+    return build_parameters_dict(population, evaluator, config, default_parameters)
 
 
 
