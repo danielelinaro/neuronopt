@@ -1,7 +1,9 @@
 
 import numpy as np
 from neuron import h
-import cell_utils as cu
+from . import cell as cu
+
+__all__ = ['Synapse', 'AMPANMDASynapse', 'build_cell_with_synapses']
 
 class Synapse (object):
     def __init__(self, sec, x, weight, delay=1.):

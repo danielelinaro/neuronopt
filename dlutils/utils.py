@@ -2,6 +2,7 @@
 import json
 import numpy as np
 
+__all__ = ['extract_mechanisms', 'build_parameters_dict', 'write_parameters']
 
 def extract_mechanisms(params_file, cell_name):
     mechs = json.load(open(params_file,'r'))[cell_name]['mechanisms']
@@ -103,6 +104,7 @@ def build_parameters_dict(individuals, evaluator, config=None, default_parameter
 
     return cells
 
+
 def write_parameters(individuals, evaluator, config, default_parameters, out_files=None):
 
     if len(individuals.shape) == 1:
@@ -120,5 +122,6 @@ def write_parameters(individuals, evaluator, config, default_parameters, out_fil
             json.dump(params,open('individual_%d.json'%i,'w'),indent=4)
         else:
             json.dump(params,open(out_files[i],'w'),indent=4)
+
 
 
