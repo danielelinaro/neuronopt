@@ -311,7 +311,6 @@ if __name__ == '__main__':
         if (i+1) % cols == 0:
             offset[1] += dy
             offset[0] = 0
-        break
 
     ax1.set_xlim(x_lim)
     ax1.set_ylim(y_lim)

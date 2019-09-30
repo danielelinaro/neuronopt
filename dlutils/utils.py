@@ -1,5 +1,6 @@
 
 import json
+import pickle
 import numpy as np
 
 __all__ = ['extract_mechanisms', 'build_parameters_dict', 'write_parameters', 'individuals_from_pickle']
