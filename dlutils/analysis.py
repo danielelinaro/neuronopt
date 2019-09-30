@@ -133,7 +133,7 @@ def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sor
 
     if groups is not None:
         borders, = np.where(groups[:-1] != groups[1:])
-        borders_idx = np.where(groups[borders] == 0)[0][1:]
+        borders_idx = np.where(groups[borders] == 0)[0][1:] - 1
         for i in borders:
             if i in borders[borders_idx]:
                 ls = '-'
