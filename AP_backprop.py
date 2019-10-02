@@ -16,7 +16,7 @@ from dlutils import cell as cu
 import dlutils as dl
 import neuron
 
-use_scoop = True
+use_scoop = False
 if use_scoop:
     try:
         from scoop import futures
@@ -30,6 +30,7 @@ else:
 def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_name=None, neuron=None, do_plot=False):
 
     if use_scoop:
+        print('Disabling plot because of SCOOP.')
         do_plot = False
 
     if cell_name is None:
@@ -142,7 +143,6 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
         ax3.set_xlabel('Distance from soma (um)')
         ax3.set_ylabel(r'Resting $\Delta V_m$ (mV)')
         ax3.set_xlim([0, np.max(distances['apical'])])
-        ax3.set_ylim([-10, 0])
         plt.show()
 
     h('forall delete_section()')
@@ -171,7 +171,8 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output', type=str, default='', help='Output file name')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=100., type=float, help='stimulation duration (default: 100 ms)')
-    parser.add_argument('--plot', action='store_true', help='plot the results (only if SCOOP is disabled)')
+    parser.add_argument('--plot', action='store_true', help='plot the results of each integration (only if SCOOP is disabled)')
+    parser.add_argument('--with-traces', action='store_true', help='plot voltage traces on the morphology.')
     args = parser.parse_args(args=sys.argv[1:])
 
     new_config_style = False
@@ -229,9 +230,11 @@ if __name__ == '__main__':
     data = list(map_fun(worker, population))
     neuron.h('forall delete_section()')
 
+    T = []
+    VM = []
     for expt in data:
-        expt.pop('t')
-        expt.pop('Vm')
+        T.append(expt.pop('t'))
+        VM.append(expt.pop('Vm'))
     pickle.dump(data, open(pkl_output_file,'wb'))
 
     normalize_distances = False
@@ -307,10 +310,43 @@ if __name__ == '__main__':
         interp = NearestNDInterpolator(points, amp)
         btmorph.plot_2D_SWC(swc_file, color_fun=lambda pt: cm.jet(interp(pt))[0][:3], offset=offset.tolist(), \
                             new_fig=False, filter=[1,3,4], tight=False)
+
+        if args.with_traces:
+            t = offset[0] + (T[i] - T[i][0]) * 5
+            v = offset[1] + (VM[i]['somatic'][0,:] - VM[i]['somatic'][0,0]) * 2
+            ax1.plot(t, v, 'k', lw=1, color=[.8,0,.8])
+            for dst in (400,600,800):
+                idx = np.where(expt['distances']['apical'] > dst)[0][0]
+                xy = expt['centers']['apical'][idx,:2]
+                t = offset[0] + xy[0] + (T[i] - T[i][0]) * 5
+                v = offset[1] + xy[1] + (VM[i]['apical'][idx,:] - VM[i]['apical'][idx,0]) * 2
+                ax1.plot(t, v, 'k', lw=1, color=[.6,.6,.6])
+
         offset[0] += dx
         if (i+1) % cols == 0:
             offset[1] += dy
             offset[0] = 0
+
+    dx = np.diff(x_lim)
+    dy = np.diff(y_lim)
+    x = x_lim[0] + 0.05*dx
+    y = y_lim[0] + 0.05*dx
+    length = 200
+    ax1.plot(x+np.zeros(2), y+np.array([0,length]), 'k', lw=1)
+    ax1.text(x_lim[0]+0.01*dx, y+length/2, '{} um'.format(length), rotation=90, \
+             verticalalignment='center', fontsize=8)
+
+    if args.with_traces:
+        x = x_lim[0] + 0.05*dx
+        y = y_lim[0] + 0.5*dy
+        x_length = 50
+        y_length = 200
+        ax1.plot(x+np.zeros(2), y+np.array([0,y_length]), 'k', lw=1)
+        ax1.text(x_lim[0]+0.01*dx, y+y_length/2, '{:.0f} mV'.format(y_length/2), rotation=90, \
+                 verticalalignment='center', fontsize=8)
+        ax1.plot(x+np.array([0,x_length]), y+np.zeros(2), 'k', lw=1)
+        ax1.text(x+x_length/2, y, '{:.0f} ms'.format(x_length/5), horizontalalignment='center', \
+                 verticalalignment='top', fontsize=8)
 
     ax1.set_xlim(x_lim)
     ax1.set_ylim(y_lim)
@@ -318,7 +354,8 @@ if __name__ == '__main__':
     ax2 = plt.axes([0.1+x_width+0.05, 0.1, 0.2, y_width])
     data = pickle.load(open(args.pickle_file,'rb'))
     population = data['good_population'].T
-    dl.plot_parameters_map(population, evaluator, config[cell_name], ax2, sort_parameters=False, parameter_names_on_ticks=False)
+    dl.plot_parameters_map(population, evaluator, config[cell_name], ax2, \
+                           sort_parameters=False, parameter_names_on_ticks=False)
     
     plt.savefig(pdf_output_file)
 

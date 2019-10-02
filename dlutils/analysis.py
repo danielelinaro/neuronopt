@@ -155,7 +155,9 @@ def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sor
         if sort_parameters:
             ax.set_yticklabels(param_names_sorted_by_mean, fontsize=7)
         else:
-            ax.set_yticklabelss(evaluator.param_names)
+            param_names = [name if not 'bar' in name else name.split('bar_')[1] \
+                           for name in evaluator.param_names]
+            ax.set_yticklabels(param_names)
         for i in range(n_parameters):
             if s[i] < 0.2:
                 ax.get_yticklabels()[i].set_color('red')
