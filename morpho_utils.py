@@ -161,8 +161,8 @@ def convert():
 ############################################################
 
 def build():
-    import cell_utils
-    import utils
+    from dlutils import cell as cu
+    from dlutils import utils
     import json
     
     parser = arg.ArgumentParser(description='Use a converted morphology to build a cell in NEURON',
@@ -199,7 +199,7 @@ def build():
 
     parameters = json.load(open(args.params_file,'r'))
 
-    cell = cell_utils.Cell('MyCell', args.swc_file, parameters, mechanisms)
+    cell = cu.Cell('MyCell', args.swc_file, parameters, mechanisms)
     cell.instantiate()
 
     regions = ['soma','basal','apical']

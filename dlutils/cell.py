@@ -9,6 +9,7 @@ h.load_file('stdrun.hoc')
 
 DEBUG = False
 
+__all__ = ['compute_section_area', 'distance', 'Cell']
 
 def compute_section_area(section):
     a = 0.
@@ -330,3 +331,4 @@ class Cell (object):
             point_A = point_B
 
         return self.path_lengths[key]
+

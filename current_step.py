@@ -3,7 +3,7 @@ import sys
 import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
-import cell_utils as cu
+from dlutils import cell as cu
 import pickle
 import json
 import time
@@ -111,8 +111,8 @@ def main():
     parameters = json.load(open(args.params_file,'r'))
 
     if args.config_file is not None or args.cell_name is not None:
-        import utils
-        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+        import dlutils
+        mechanisms = dlutils.extract_mechanisms(args.config_file, args.cell_name)
     else:
         mechanisms = json.load(open(args.mech_file,'r'))
 

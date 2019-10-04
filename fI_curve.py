@@ -4,8 +4,8 @@ import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
 from neuron import h
-import cell_utils as cu
-from utils import *
+from dlutils import cell as cu
+from dlutils.utils import *
 import pickle
 import json
 
@@ -136,8 +136,8 @@ def main():
         sys.exit(1)
 
     if args.config_file is not None or args.cell_name is not None:
-        import utils
-        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+        import dlutils
+        mechanisms = dlutils.extract_mechanisms(args.config_file, args.cell_name)
     else:
         mechanisms = json.load(open(args.mech_file,'r'))
 

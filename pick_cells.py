@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import efel
 from neuron import h
 from current_step import inject_current_step
-from utils import *
+from dlutils.utils import *
 
 efel.setThreshold(0)
 

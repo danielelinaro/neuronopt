@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import bluepyopt.ephys as ephys
 from neuron import h
-from utils import *
+from dlutils.utils import *
 
 efel.setThreshold(0)
 

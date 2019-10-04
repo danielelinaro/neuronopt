@@ -7,6 +7,7 @@ import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
 from random import randint
+import dlutils as dl
 
 import neuron
 from current_step import inject_current_step
@@ -20,34 +21,6 @@ if use_scoop:
         map_fun = map
 else:
     map_fun = map
-
-
-def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_file='evaluator.pkl'):
-    try:
-        data = pickle.load(open(pkl_file,'rb'))
-        population = data['good_population']
-    except:
-        population = np.array(pickle.load(open(pkl_file,'rb'), encoding='latin1'))
-
-    evaluator = pickle.load(open(evaluator_file,'rb'))
-
-    if cell_name is None:
-        default_parameters = json.load(open(parameters_file,'r'))
-        config = None
-    else:
-        default_parameters = None
-        config = json.load(open(config_file,'r'))[cell_name]
-
-    import utils
-    return utils.build_parameters_dict(population, evaluator, config, default_parameters)
-
-
-def plot_means_with_sem(x,y,color='k',label=''):
-    Ym = np.mean(y,axis=0)
-    Ys = np.std(y,axis=0) / np.sqrt(y.shape[0])
-    for i,ym,ys in zip(x,Ym,Ys):
-        plt.plot([i,i],[ym-ys,ym+ys],color=color,lw=1)
-    plt.plot(x,Ym,'o-',color=color,lw=1,label=label)
 
 
 if __name__ == '__main__':
@@ -97,9 +70,9 @@ if __name__ == '__main__':
         if not new_config_style:
             print('You must provide the --mech-file option if no configuration file is specified.')
             sys.exit(1)
-        import utils
+        import dlutils
         cell_name = args.cell_name
-        mechanisms = utils.extract_mechanisms(args.config_file, cell_name)
+        mechanisms = dlutils.extract_mechanisms(args.config_file, cell_name)
     else:
         cell_name = None
         mechanisms = json.load(open(args.mech_file,'r'))
@@ -110,7 +83,7 @@ if __name__ == '__main__':
         if len(params_files) > 1:
             print('You cannot specify multiple parameter files and one pickle file.')
             sys.exit(1)
-        population = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
+        population = dl.individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
 
     dur = args.dur
     delay = args.delay
@@ -145,11 +118,11 @@ if __name__ == '__main__':
             'inverse_last_isi': inverse_last_isi}
     pickle.dump(data, open(args.output,'wb'))
     
-    plt.figure()
-    plot_means_with_sem(I*1e-3,no_spikes,color='r',label='All spikes')
-    plot_means_with_sem(I*1e-3,f,color='k',label='With transient removed')
-    plot_means_with_sem(I*1e-3,inverse_first_isi,color='b',label='Inverse first ISI')
-    plot_means_with_sem(I*1e-3,inverse_last_isi,color='m',label='Inverse last ISI')
+    fig,ax = plt.subplots(1,1)
+    dl.plot_means_with_errorbars(I*1e-3,no_spikes,mode='sem',ax=ax,color='r',label='All spikes')
+    dl.plot_means_with_errorbars(I*1e-3,f,mode='sem',ax=ax,color='k',label='With transient removed')
+    dl.plot_means_with_errorbars(I*1e-3,inverse_first_isi,mode='sem',ax=ax,color='b',label='Inverse first ISI')
+    dl.plot_means_with_errorbars(I*1e-3,inverse_last_isi,mode='sem',ax=ax,color='m',label='Inverse last ISI')
     plt.xlabel('Current (nA)')
     plt.ylabel(r'$f$ (spikes/s)')
     plt.legend(loc='best')

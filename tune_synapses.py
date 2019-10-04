@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from neuron import h
-import synapse_utils as su
-import utils
+from dlutils import synapse as su
+from dlutils import utils
 import json
 
 # the name of this script

@@ -6,16 +6,17 @@ import pickle
 import argparse as arg
 import numpy as np
 from random import randint
-from . import cell_utils as cu
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import btmorph
 from scipy.interpolate import NearestNDInterpolator
 
+from dlutils import cell as cu
+import dlutils as dl
 import neuron
 
-use_scoop = True
+use_scoop = False
 if use_scoop:
     try:
         from scoop import futures
@@ -29,6 +30,7 @@ else:
 def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_name=None, neuron=None, do_plot=False):
 
     if use_scoop:
+        print('Disabling plot because of SCOOP.')
         do_plot = False
 
     if cell_name is None:
@@ -59,9 +61,12 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
                  'apical': np.array([seg['dst'] for seg in cell.apical_segments])}
 
     centers = {'somatic': np.array([seg['center'] for seg in cell.somatic_segments]),
-               'axonal': np.array([seg['center'] for seg in cell.axonal_segments]),
                'basal': np.array([seg['center'] for seg in cell.basal_segments]),
                'apical': np.array([seg['center'] for seg in cell.apical_segments])}
+    try:
+        centers['axonal'] = np.array([seg['center'] for seg in cell.axonal_segments])
+    except:
+        centers['axonal'] = np.array([[0,seg['dst'],0] for seg in cell.axonal_segments])
                  
     recorders = {'spike_times': h.Vector(), 't': h.Vector()}
     apc = h.APCount(cell.morpho.soma[0](0.5))
@@ -138,7 +143,6 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
         ax3.set_xlabel('Distance from soma (um)')
         ax3.set_ylabel(r'Resting $\Delta V_m$ (mV)')
         ax3.set_xlim([0, np.max(distances['apical'])])
-        ax3.set_ylim([-10, 0])
         plt.show()
 
     h('forall delete_section()')
@@ -151,115 +155,9 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
             't': t[idx], 'Vm': Vm}
 
 
-def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_file='evaluator.pkl'):
-    try:
-        data = pickle.load(open(pkl_file,'rb'))
-        population = data['good_population']
-    except:
-        population = np.array(pickle.load(open(pkl_file,'rb'), encoding='latin1'))
-
-    evaluator = pickle.load(open(evaluator_file,'rb'))
-
-    if cell_name is None:
-        default_parameters = json.load(open(parameters_file,'r'))
-        config = None
-    else:
-        default_parameters = None
-        config = json.load(open(config_file,'r'))[cell_name]
-
-    import utils
-    return utils.build_parameters_dict(population, evaluator, config, default_parameters)
-
-
-def plot_means_with_errorbars(x, y, color='k', label='', mode='sem', ax=None):
-    if ax is None:
-        ax = plt.gca()
-    Ym = np.nanmean(y,axis=0)
-    if mode == 'sem':
-        Ys = np.nanstd(y,axis=0) / np.sqrt(y.shape[0])
-    else:
-        Ys = np.nanstd(y,axis=0)
-    for i,ym,ys in zip(x,Ym,Ys):
-        ax.plot([i,i], [ym-ys,ym+ys], color=color, lw=2)
-    ax.plot(x, Ym, 'o-', color=color, lw=2, label=label)
-
-
-def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sort_parameters=True, parameter_names_on_ticks=True):
-    n_parameters,n_individuals = population.shape
-
-    bounds = {}
-    for region,params in config['optimized'].items():
-        for param in params:
-            param_name = param[0] + '.' + region
-            bounds[param_name] = np.array([param[1],param[2]])
-
-    normalized = np.zeros(population.shape)
-    pop_maxima = np.max(population,axis=1)
-    pop_minima = np.min(population,axis=1)
-    for i,name in enumerate(evaluator.param_names):
-        normalized[i,:] = (population[i,:] - bounds[name][0]) / (bounds[name][1] - bounds[name][0])
-
-    if ax is None:
-        ax = plt.gca()
-
-    if sort_parameters:
-        m = np.mean(normalized, axis=1)
-        idx = np.argsort(m)[::-1]
-        normalized_sorted_by_mean = normalized[idx,:].copy()
-        s = np.std(normalized_sorted_by_mean, axis=1)
-        param_names_sorted_by_mean = [evaluator.param_names[i] for i in idx]
-        for i,name in enumerate(param_names_sorted_by_mean):
-            if 'bar' in name:
-                param_names_sorted_by_mean[i] = name.split('bar_')[1]
-        img = ax.imshow(normalized_sorted_by_mean, cmap='jet')
-    else:
-        s = np.std(normalized, axis=1)
-        img = ax.imshow(normalized, cmap='jet')
-
-    if groups is not None:
-        borders, = np.where(groups[:-1] != groups[1:])
-        borders_idx = np.where(groups[borders] == 0)[0][1:]
-        for i in borders:
-            if i in borders[borders_idx]:
-                ls = '-'
-                lw = 2
-            else:
-                ls = '--'
-                lw = 1
-            ax.plot([i,i], [0,n_parameters-1], 'w'+ls, linewidth=lw)
-        ax.set_xticks(np.append(borders,n_individuals-1))
-        ax.set_xticklabels(np.append(borders+1,n_individuals))
-    elif n_individuals < 20:
-        ax.set_xticks(np.arange(n_individuals))
-        ax.set_xticklabels(1+np.arange(n_individuals))
-
-    ax.set_xlabel('Individual #')
-
-    ax.set_yticks(np.arange(n_parameters))
-    if parameter_names_on_ticks:
-        if sort_parameters:
-            ax.set_yticklabels(param_names_sorted_by_mean, fontsize=7)
-        else:
-            ax.set_yticklabelss(evaluator.param_names)
-        for i in range(n_parameters):
-            if s[i] < 0.2:
-                ax.get_yticklabels()[i].set_color('red')
-    else:
-        ax.set_yticklabels(1+np.arange(n_parameters))
-
-
-def set_rc_defaults():
-    plt.rc('font', family='Arial', size=10)
-    plt.rc('lines', linewidth=1, color='k')
-    plt.rc('axes', linewidth=1, titlesize='medium', labelsize='medium')
-    plt.rc('xtick', direction='out')
-    plt.rc('ytick', direction='out')
-    #plt.rc('figure', dpi=300)
-
-
 if __name__ == '__main__':
 
-    set_rc_defaults()
+    dl.set_rc_defaults()
 
     parser = arg.ArgumentParser(description='Record back-propagating APs in a cell apical dendrites.')
     parser.add_argument('I', type=float, action='store', help='current value in pA')
@@ -273,7 +171,8 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output', type=str, default='', help='Output file name')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=100., type=float, help='stimulation duration (default: 100 ms)')
-    parser.add_argument('--plot', action='store_true', help='plot the results (only if SCOOP is disabled)')
+    parser.add_argument('--plot', action='store_true', help='plot the results of each integration (only if SCOOP is disabled)')
+    parser.add_argument('--with-traces', action='store_true', help='plot voltage traces on the morphology.')
     args = parser.parse_args(args=sys.argv[1:])
 
     new_config_style = False
@@ -294,9 +193,8 @@ if __name__ == '__main__':
         if not new_config_style:
             print('You must provide the --mech-file option if no configuration file is specified.')
             sys.exit(1)
-        import utils
         cell_name = args.cell_name
-        mechanisms = utils.extract_mechanisms(args.config_file, cell_name)
+        mechanisms = dl.extract_mechanisms(args.config_file, cell_name)
     else:
         cell_name = None
         mechanisms = json.load(open(args.mech_file,'r'))
@@ -307,7 +205,7 @@ if __name__ == '__main__':
         if len(params_files) > 1:
             print('You cannot specify multiple parameter files and one pickle file.')
             sys.exit(1)
-        population = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
+        population = dl.individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
 
     if args.output == '':
         if args.pickle_file != '':
@@ -332,9 +230,11 @@ if __name__ == '__main__':
     data = list(map_fun(worker, population))
     neuron.h('forall delete_section()')
 
+    T = []
+    VM = []
     for expt in data:
-        expt.pop('t')
-        expt.pop('Vm')
+        T.append(expt.pop('t'))
+        VM.append(expt.pop('Vm'))
     pickle.dump(data, open(pkl_output_file,'wb'))
 
     normalize_distances = False
@@ -410,10 +310,43 @@ if __name__ == '__main__':
         interp = NearestNDInterpolator(points, amp)
         btmorph.plot_2D_SWC(swc_file, color_fun=lambda pt: cm.jet(interp(pt))[0][:3], offset=offset.tolist(), \
                             new_fig=False, filter=[1,3,4], tight=False)
+
+        if args.with_traces:
+            t = offset[0] + (T[i] - T[i][0]) * 5
+            v = offset[1] + (VM[i]['somatic'][0,:] - VM[i]['somatic'][0,0]) * 2
+            ax1.plot(t, v, 'k', lw=1, color=[.8,0,.8])
+            for dst in (400,600,800):
+                idx = np.where(expt['distances']['apical'] > dst)[0][0]
+                xy = expt['centers']['apical'][idx,:2]
+                t = offset[0] + xy[0] + (T[i] - T[i][0]) * 5
+                v = offset[1] + xy[1] + (VM[i]['apical'][idx,:] - VM[i]['apical'][idx,0]) * 2
+                ax1.plot(t, v, 'k', lw=1, color=[.6,.6,.6])
+
         offset[0] += dx
         if (i+1) % cols == 0:
             offset[1] += dy
             offset[0] = 0
+
+    dx = np.diff(x_lim)
+    dy = np.diff(y_lim)
+    x = x_lim[0] + 0.05*dx
+    y = y_lim[0] + 0.05*dx
+    length = 200
+    ax1.plot(x+np.zeros(2), y+np.array([0,length]), 'k', lw=1)
+    ax1.text(x_lim[0]+0.01*dx, y+length/2, '{} um'.format(length), rotation=90, \
+             verticalalignment='center', fontsize=8)
+
+    if args.with_traces:
+        x = x_lim[0] + 0.05*dx
+        y = y_lim[0] + 0.5*dy
+        x_length = 50
+        y_length = 200
+        ax1.plot(x+np.zeros(2), y+np.array([0,y_length]), 'k', lw=1)
+        ax1.text(x_lim[0]+0.01*dx, y+y_length/2, '{:.0f} mV'.format(y_length/2), rotation=90, \
+                 verticalalignment='center', fontsize=8)
+        ax1.plot(x+np.array([0,x_length]), y+np.zeros(2), 'k', lw=1)
+        ax1.text(x+x_length/2, y, '{:.0f} ms'.format(x_length/5), horizontalalignment='center', \
+                 verticalalignment='top', fontsize=8)
 
     ax1.set_xlim(x_lim)
     ax1.set_ylim(y_lim)
@@ -421,7 +354,8 @@ if __name__ == '__main__':
     ax2 = plt.axes([0.1+x_width+0.05, 0.1, 0.2, y_width])
     data = pickle.load(open(args.pickle_file,'rb'))
     population = data['good_population'].T
-    plot_parameters_map(population, evaluator, config[cell_name], ax2, sort_parameters=False, parameter_names_on_ticks=False)
+    dl.plot_parameters_map(population, evaluator, config[cell_name], ax2, \
+                           sort_parameters=False, parameter_names_on_ticks=False)
     
     plt.savefig(pdf_output_file)
 
