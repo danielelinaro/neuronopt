@@ -82,7 +82,7 @@ if __name__ == '__main__':
                     import ipdb
                     ipdb.set_trace()
             avg = np.mean(params[:,idx])
-            other_avg = np.mean(params[:,idx])
+            other_avg = np.mean(other_params[:,idx])
             params[:,idx] *= (other_avg / avg)
             print('Using values from cell {} for parameter {} (index {}).'.format(other_cell_name, mech_name, idx))
     population = dl.build_parameters_dict(params, evaluator, config, None)
