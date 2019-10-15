@@ -12,6 +12,7 @@
 .DS_Store
 x86_64
 *.mod
+__pycache__
 !mechanisms/*.mod
 !mechanisms_hbp/*.mod
 !mechanisms_hpc/*.mod
