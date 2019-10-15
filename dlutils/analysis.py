@@ -99,7 +99,7 @@ def load_fI_data(folder_list):
     return I,num_spikes,mean_frequency,inverse_first_isi
 
 
-def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sort_parameters=True, parameter_names_on_ticks=True):
+def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sort_parameters=True, parameter_names_on_ticks=True, sort_idx=None):
     n_parameters,n_individuals = population.shape
 
     bounds = {}
@@ -119,7 +119,10 @@ def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sor
 
     if sort_parameters:
         m = np.mean(normalized, axis=1)
-        idx = np.argsort(m)[::-1]
+        if sort_idx is None:
+            idx = np.argsort(m)[::-1]
+        else:
+            idx = sort_idx
         normalized_sorted_by_mean = normalized[idx,:].copy()
         s = np.std(normalized_sorted_by_mean, axis=1)
         param_names_sorted_by_mean = [evaluator.param_names[i] for i in idx]
@@ -153,42 +156,59 @@ def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sor
     ax.set_yticks(np.arange(n_parameters))
     if parameter_names_on_ticks:
         if sort_parameters:
-            ax.set_yticklabels(param_names_sorted_by_mean, fontsize=7)
+            ax.set_yticklabels(param_names_sorted_by_mean, fontsize=6)
         else:
             param_names = [name if not 'bar' in name else name.split('bar_')[1] \
                            for name in evaluator.param_names]
-            ax.set_yticklabels(param_names)
+            ax.set_yticklabels(param_names, fontsize=6)
         for i in range(n_parameters):
             if s[i] < 0.2:
                 ax.get_yticklabels()[i].set_color('red')
     else:
-        ax.set_yticklabels(1+np.arange(n_parameters))
+        ax.set_yticklabels(1+np.arange(n_parameters), fontsize=6)
+
+    if sort_parameters:
+        return idx
+    return None
 
 
-def plot_parameters_maps(folders, titles=None):
+def plot_parameters_maps(folders, titles=None, sort_parameters=True, parameter_names_on_ticks=True):
     if titles is None:
         titles = {k: k for k in folders}
-    fig,axes = plt.subplots(2,1,figsize=(10,5))
-    n_ind = [0, 0]
-    for i,key in enumerate(folders):
-        folder = list(folders[key].values())[0][0]
-        population,groups = load_population_data(folders[key], flatten=True)
-        n_ind[i] = population.shape[1]
-        evaluator = pickle.load(open(folder + '/evaluator.pkl','rb'))
-        _,config = json.load(open(folder + '/parameters.json','r')).popitem()
-        plot_parameters_map(population, evaluator, config, axes[i], groups)
-        axes[i].set_title(titles[key])
+    n_rows = len(folders)
+    n_cols = np.max([len(v) for v in folders.values()])
+    fig,axes = plt.subplots(n_rows, n_cols, figsize=(n_cols*3,n_rows*2.5), squeeze=False)
+    n_ind = np.zeros((n_rows,n_cols))
+    for i,condition in enumerate(folders):
+        population,groups = load_population_data(folders[condition], flatten=False)
+        sort_idx = None
+        for j,cell in enumerate(population):
+            folder = folders[condition][cell][0]
+            evaluator = pickle.load(open(folder + '/evaluator.pkl','rb'))
+            _,config = json.load(open(folder + '/parameters.json','r')).popitem()
+            sort_idx = plot_parameters_map(population[cell].T, evaluator, config, axes[i,j], \
+                                           groups[cell], sort_parameters, parameter_names_on_ticks, sort_idx)
+            axes[i,j].set_title(cell)
+            n_ind[i,j] = population[cell].shape[0]
 
-    bounds = [list(ax.get_position().bounds) for ax in axes]
-    m = np.argmax(n_ind)
-    y_width = bounds[m][3]
-    for i in range(len(axes)):
-        bounds[i][0] = 0.1
-        bounds[i][1] = 0.125 + y_width * 1.3 * i
-        bounds[i][2] = 0.85 * n_ind[i] / n_ind[m]
-        bounds[i][3] = y_width * 0.8
-        axes[i].set_position(bounds[i])
-
-    plt.savefig('parameters_maps.pdf')
-    plt.show()
+    dx = 0.1
+    if n_cols == 1:
+        x_offset = [0.05,0.05]
+        dy = 0.2
+    else:
+        x_offset = [0.1,0.05]
+        dy = 0.15
+    y_offset = [0.1,0.1]
+    x_space = 1 - (n_cols-1) * dx - np.sum(x_offset)
+    y_space = 1 - (n_rows-1) * dy - np.sum(y_offset)
+    y_pos = y_offset[0]
+    height = y_space / n_rows
+    for i in range(n_rows):
+        x_pos = x_offset[0]
+        for j in range(n_cols):
+            width = n_ind[i,j] / np.sum(n_ind[i,:]) * x_space
+            pos = [x_pos, y_pos, width, height]
+            axes[i,j].set_position(pos)
+            x_pos += width + dx
+        y_pos += height + dy
 
