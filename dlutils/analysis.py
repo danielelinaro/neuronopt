@@ -193,7 +193,7 @@ def plot_parameters_maps(folders, titles=None, sort_parameters=True, parameter_n
 
     dx = 0.1
     if n_cols == 1:
-        x_offset = [0.05,0.05]
+        x_offset = [0.3,0.05]
         dy = 0.2
     else:
         x_offset = [0.1,0.05]
