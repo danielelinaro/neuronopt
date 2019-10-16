@@ -31,6 +31,8 @@ if __name__ == '__main__':
                         help='SWC file defining the cell morphology')
     parser.add_argument('-c','--config-file', type=str, default='', required=True,
                         help='JSON file(s) containing the configuration')
+    parser.add_argument('-C', '--condition', type=str, default='', required=True,
+                        help='Experimental condition')
     parser.add_argument('-n','--cell-name', type=str, default='', required=True,
                         help='cell name, if the mechanisms are stored in new style format')
     parser.add_argument('-P','--pickle-file', type=str, default='', required=True,
@@ -55,12 +57,13 @@ if __name__ == '__main__':
             sys.exit(1)
 
     cell_name = args.cell_name
+    condition = args.condition
     mechanisms = dl.extract_mechanisms(args.config_file, cell_name)
 
     config = json.load(open(args.config_file,'r'))[cell_name]
     data = pickle.load(open(args.pickle_file,'rb'))
-    params = data['populations'][cell_name]
-    evaluator = data['evaluator']
+    params = data['populations'][condition][cell_name]
+    evaluator = data['evaluators'][condition]
     param_names = evaluator.param_names
     default_parameters = None
     if len(args.swap) > 0:
