@@ -68,9 +68,10 @@ if __name__ == '__main__':
     default_parameters = None
     if len(args.swap) > 0:
         s = args.swap.split('/')
-        other_cell_name = s[0]
-        mech_names = s[1].split(',')
-        other_params = data['populations'][other_cell_name]
+        other_condition = s[0]
+        other_cell_name = s[1]
+        mech_names = s[2].split(',')
+        other_params = data['populations'][other_condition][other_cell_name]
         n_individuals = min(params.shape[0], other_params.shape[0])
         params = params[:n_individuals,:]
         other_params = other_params[:n_individuals,:]
