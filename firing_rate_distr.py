@@ -39,6 +39,7 @@ if __name__ == '__main__':
                         help='Pickle file containing the parameters of a population of individuals')
     parser.add_argument('-o','--output', type=str, default='firing_rates.pkl', help='Output file name')
     parser.add_argument('-s','--swap', type=str, default='', help='parameters to swap')
+    parser.add_argument('-A','--save-all', action='store_true', help='save also voltage traces')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=1000., type=float, help='stimulation duration (default: 1000 ms)')
     parser.add_argument('--tran', default=0., type=float, help='transient to be discard after stimulation onset (default: 0 ms)')
@@ -111,4 +112,9 @@ if __name__ == '__main__':
             'f': f, 'no_spikes': no_spikes,
             'inverse_first_isi': inverse_first_isi,
             'inverse_last_isi': inverse_last_isi}
+
+    if args.save_all:
+        data['time'] = [np.array(run['t']) for run in runs]
+        data['voltage'] = {'soma': [np.array(run['Vsoma']) for run in runs]}
+
     pickle.dump(data, open(args.output,'wb'))
