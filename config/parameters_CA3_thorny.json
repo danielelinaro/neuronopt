@@ -40,7 +40,9 @@
 	    ["gbar_cagk", 0.1e-5, 4e-4, "uniform" ],
 	    ["Ra", 100, 400, "secvar"],
             ["g_pas", 0.5e-5, 10e-5, "uniform" ],
-            ["e_pas", -80, -55, "linear_e_pas_apic" ]
+            ["e_pas", -80, -55, "linear_e_pas_apic" ],
+            ["tau_cacum", 20, 1000, "uniform" ],
+            ["gamma_cacum", 0.0005, 1, "uniform" ]
         ],
         "alldend": [
             ["gkabar_kad", 0.005, 0.05, "sigmoid_kad_apic" ]
@@ -88,7 +90,9 @@
 	    ["gbar_cagk", 0.1e-5, 4e-4, "uniform" ],
 	    ["Ra", 100, 400, "secvar"],
             ["g_pas", 0.5e-5, 10e-5, "uniform" ],
-            ["e_pas", -80, -55, "linear_e_pas_apic" ]
+            ["e_pas", -80, -55, "linear_e_pas_apic" ],
+            ["tau_cacum", 20, 1000, "uniform" ],
+            ["gamma_cacum", 0.0005, 1, "uniform" ]
         ],
         "alldend": [
             ["gkabar_kad", 0.005, 0.05, "sigmoid_kad_apic" ]
@@ -136,7 +140,9 @@
 	    ["gbar_cagk", 0.1e-5, 4e-4, "uniform" ],
 	    ["Ra", 100, 400, "secvar"],
             ["g_pas", 0.5e-5, 10e-5, "uniform" ],
-            ["e_pas", -80, -55, "linear_e_pas_apic" ]
+            ["e_pas", -80, -55, "linear_e_pas_apic" ],
+            ["tau_cacum", 20, 1000, "uniform" ],
+            ["gamma_cacum", 0.0005, 1, "uniform" ]
         ],
         "alldend": [
             ["gkabar_kad", 0.005, 0.05, "sigmoid_kad_apic" ]
@@ -184,7 +190,9 @@
 	    ["gbar_cagk", 0.1e-5, 4e-4, "uniform" ],
 	    ["Ra", 100, 400, "secvar"],
             ["g_pas", 0.5e-5, 10e-5, "uniform" ],
-            ["e_pas", -80, -55, "linear_e_pas_apic" ]
+            ["e_pas", -80, -55, "linear_e_pas_apic" ],
+            ["tau_cacum", 20, 1000, "uniform" ],
+            ["gamma_cacum", 0.0005, 1, "uniform" ]
         ],
         "alldend": [
             ["gkabar_kad", 0.005, 0.05, "sigmoid_kad_apic" ]
