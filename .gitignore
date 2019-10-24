@@ -1,5 +1,7 @@
 *~
 *.swc
+!single_compartment.swc
+!ball_stick.swc
 *.pyc
 *.pyo
 *.h5
