@@ -30,7 +30,7 @@
             ["gbar_kmb", 0.0015, 0.06, "uniform" ]
         ],
         "allnoaxon": [
-	    ["gnabar_nap", 0.001, 0.01, "uniform" ],
+	    ["gnabar_nap", 0.00001, 0.001, "uniform" ],
             ["gkdrbar_kdr", 0.001, 0.008, "uniform" ],
             ["gbar_nax", 0.02, 0.08, "uniform" ],
             ["ghdbar_hd", 0.000005, 0.00002, "linear_hd_apic" ],
@@ -81,7 +81,7 @@
             ["gbar_kmb", 0.0015, 0.06, "uniform" ]
         ],
         "allnoaxon": [
-	    ["gnabar_nap", 0.001, 0.01, "uniform" ],
+	    ["gnabar_nap", 0.00001, 0.001, "uniform" ],
             ["gkdrbar_kdr", 0.001, 0.008, "uniform" ],
             ["gbar_nax", 0.02, 0.08, "uniform" ],
             ["ghdbar_hd", 0.000005, 0.00002, "linear_hd_apic" ],
@@ -132,7 +132,7 @@
             ["gbar_kmb", 0.0015, 0.06, "uniform" ]
         ],
         "allnoaxon": [
-	    ["gnabar_nap", 0.001, 0.01, "uniform" ],
+	    ["gnabar_nap", 0.00001, 0.001, "uniform" ],
             ["gkdrbar_kdr", 0.001, 0.008, "uniform" ],
             ["gbar_nax", 0.02, 0.08, "uniform" ],
             ["ghdbar_hd", 0.000005, 0.00002, "linear_hd_apic" ],
@@ -183,7 +183,7 @@
             ["gbar_kmb", 0.0015, 0.06, "uniform" ]
         ],
         "allnoaxon": [
-	    ["gnabar_nap", 0.001, 0.01, "uniform" ],
+	    ["gnabar_nap", 0.00001, 0.001, "uniform" ],
             ["gkdrbar_kdr", 0.001, 0.008, "uniform" ],
             ["gbar_nax", 0.02, 0.08, "uniform" ],
             ["ghdbar_hd", 0.000005, 0.00002, "linear_hd_apic" ],
