@@ -9,14 +9,15 @@ import json
 import time
 
 
-def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_name=None, neuron=None, do_plot=False, verbose=False):
+def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace_axon=False, \
+                        add_axon_if_missing=True, cell_name=None, neuron=None, do_plot=False, verbose=False):
 
     if cell_name is None:
         import random
         cell_name = 'cell_%06d' % random.randint(0,999999)
 
     cell = cu.Cell(cell_name, swc_file, parameters, mechanisms)
-    cell.instantiate(add_axon_if_missing=False)
+    cell.instantiate(replace_axon, add_axon_if_missing)
 
     if neuron is None:
         h = cu.h
@@ -73,6 +74,11 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
                     gbars[key] = getattr(cell.morpho.soma[0](0.5), 'g' + name + 'bar_' + name)
                 except:
                     gbars[key] = getattr(cell.morpho.soma[0](0.5), 'g' + name[:2] + 'bar_' + name)
+
+    recorders['soma.m_kmb'] = h.Vector()
+    recorders['soma.m_kmb'].record(cell.morpho.soma[0](0.5)._ref_m_kmb)
+    gbars['soma.m_kmb'] = 1
+
     h.cvode_active(1)
     h.tstop = stim.dur + stim.delay + 100
 
@@ -107,6 +113,12 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
                 ax.plot(recorders['t'], np.array(rec)/gbars[name], label=name)
         ax.legend(loc='best')
         ax.set_xlim([stim.delay - 50, stim.delay + stim.dur + 100])
+        ## phase-space plot: to be perfected...
+        #fig,ax = plt.subplots(1, 1, figsize=(6,4))
+        #idx, = np.where(t > 1000)
+        #v = np.array(recorders['soma.v'])[idx]
+        #m = np.array(recorders['soma.m_kmb'])[idx]
+        #ax.plot(v,m,'k')
         plt.show()
         
     h('forall delete_section()')
@@ -127,6 +139,10 @@ def main():
                         help='JSON file containing the configuration of the model')
     parser.add_argument('-n','--cell-name', type=str, default=None,
                         help='name of the cell as it appears in the configuration file')
+    parser.add_argument('-R','--replace-axon', type=str, default=None,
+                        help='whether to replace the axon (accepted values: "yes" or "no")')
+    parser.add_argument('-A', '--add-axon-if-missing', type=str, default=None,
+                        help='whether add an axon if the cell does not have one (accepted values: "yes" or "no")')
     parser.add_argument('-o','--output', type=str, default='step.pkl', help='output file name (default: step.pkl)')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose (default: no)')
@@ -148,8 +164,31 @@ def main():
     else:
         mechanisms = json.load(open(args.mech_file,'r'))
 
-    rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file,
-                              parameters, mechanisms, do_plot=args.plot, verbose=args.verbose)
+    try:
+        sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
+    except:
+        sim_pars = None
+
+    if args.replace_axon == None:
+        if sim_pars is None:
+            replace_axon = False
+        else:
+            replace_axon = sim_pars['replace_axon']
+            print('Setting replace_axon = {} as per original optimization.'.format(replace_axon))
+    else:
+        replace_axon = args.replace_axon
+
+    if args.add_axon_if_missing == None:
+        if sim_pars is None:
+            add_axon_if_missing = True
+        else:
+            add_axon_if_missing = not sim_pars['no_add_axon']
+            print('Setting add_axon_if_missing = {} as per original optimization.'.format(add_axon_if_missing))
+    else:
+        add_axon_if_missing = args.add_axon_if_missing
+
+    rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file, parameters, mechanisms, \
+                              replace_axon, add_axon_if_missing, do_plot=args.plot, verbose=args.verbose)
         
     step = {'I': args.I, 'time': np.array(rec['t']), 'voltage': np.array(rec['soma.v']), 'spike_times': np.array(rec['spike_times'])}
 

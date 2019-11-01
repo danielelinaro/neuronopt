@@ -99,8 +99,8 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
             fid.write('%f\n' % features_std_units['Step%d'%i][k])
         fid.close()
 
-    plt.figure()
-    plt.axes([0.01,0.65,0.98,0.35])
+    plt.figure(figsize=(6,5))
+    plt.axes([0.01,0.75,0.98,0.25])
     offset = 0
     before = 250
     after = 200
@@ -136,7 +136,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     plt.xlim([stim_start-before,stim_end+after])
     plt.axis('off')
 
-    fnt = 9
+    fnt = 8
     offset = 0.175
     space = 0.03
     dx = (0.97 - offset - (n_steps-1)*space)/n_steps
@@ -146,7 +146,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     dy = 0.3
     green = [0,.7,.3]
     for i,(stepnum,feat) in enumerate(features_std_units.items()):
-        ax = plt.axes([offset+i*(dx+space),0.4,dx,0.2])
+        ax = plt.axes([offset+i*(dx+space),0.45,dx,0.25])
         X = np.zeros(n_features)
         for k,v in feat.items():
             idx, = np.where([k == f for f in all_feature_names])
@@ -168,14 +168,14 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
         plt.xticks(np.arange(0,np.ceil(np.nanmax(X))+1,dtick),fontsize=fnt)
     
         if i == 0:
-            plt.yticks(Y,all_feature_names,fontsize=6)
+            plt.yticks(Y,all_feature_names,fontsize=fnt-3)
         else:
             plt.yticks(Y,[])
         
         plt.axis([0,np.max([5.1,np.ceil(np.nanmax(X))]),np.min(Y)-1,np.max(Y)+1])
 
     blue = [.9,.9,1]
-    ax = plt.axes([0.25,0.05,0.72,0.25])
+    ax = plt.axes([0.25,0.05,0.72,0.3])
     dy = 0.3
     plot = plt.semilogx
     for y0,(par,best_par,m,b) in enumerate(zip(params,best_params,params_median,bounds)):
@@ -193,7 +193,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
 
     plt.xlim([1e-6,1500])
     plt.ylim([-1,n_params])
-    plt.yticks(np.arange(n_params),param_names,fontsize=6)
+    plt.yticks(np.arange(n_params),param_names,fontsize=fnt-3)
     plt.savefig(outfile)
     #plt.show()
 
