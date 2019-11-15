@@ -38,9 +38,9 @@ feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                          'AP_fall_rate','AP_rise_rate','AHP_slow_time',
                          'voltage_base','steady_state_voltage',
                          'ISI_CV','Spikecount','doublet_ISI',
-                         'time_to_first_spike','adaptation_index2',
+                         'time_to_first_spike','time_to_last_spike','adaptation_index2',
                          'ISI_values','AHP_depth_abs_slow','fast_AHP',
-                         'min_AHP_values'],
+                         'min_AHP_values','inv_first_ISI','inv_second_ISI','inv_third_ISI'],
                  'BBP_CTX': ['AP_height', 'AHP_slow_time', 'ISI_CV',
                              'doublet_ISI','AHP_depth_abs_slow',
                              'AP_width','time_to_first_spike','AHP_depth_abs',
@@ -295,6 +295,103 @@ def write_features():
 
 
 ############################################################
+###                      WRITE-XLS                       ###
+############################################################
+
+
+def write_features_xls():
+    parser = arg.ArgumentParser(description='Write configuration file using features from multiple cells stored in an Excel file.',
+                                prog=progname+' write-xls')
+    parser.add_argument('file', type=str, help='the Excel file contaning the features')
+    parser.add_argument('--step-amps', required=True, type=str,
+                        help='current amplitudes to include in the protocols, comma separated')
+    parser.add_argument('--features-file', default='features.json',
+                        help='output features file name (deault: features.json)')
+    parser.add_argument('--protocols-file', default='protocols.json',
+                        help='output protocols file name (deault: protocols.json)')
+    parser.add_argument('-o', '--suffix', default='',
+                        help='suffix for the output file names (default: no suffix)')
+    parser.add_argument('--stim-start', default=1000, type=float, help='delay before application of the stimulus')
+    parser.add_argument('--stim-dur', required=True, type=float, help='duration of the stimulus')
+    parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
+
+    args = parser.parse_args(args=sys.argv[2:])
+
+    xls_file = args.file
+    if not os.path.isfile(xls_file):
+        print('{}: {}: no such file.'.format(progname, xls_file))
+        sys.exit(1)
+
+    amplitudes = np.array([float(amp) for amp in args.step_amps.split(',')])
+    n_steps = len(amplitudes)
+
+    delay = args.stim_start
+    if delay < 0:
+        print('{}: the beginning of the stimulus must be >= 0.'.format(progname))
+        sys.exit(2)
+
+    dur = args.stim_dur
+    if dur <= 0:
+        print('{}: the duraton of the stimulus must be > 0.'.format(progname))
+        sys.exit(3)
+
+    after = args.after
+    if after < 0:
+        print('{}: the time after the application of the stimulus must be >= 0.'.format(progname))
+        sys.exit(4)
+
+    import openpyxl
+    book = openpyxl.load_workbook(xls_file)
+
+    features = {}
+    protocols = {}
+
+    for i in range(n_steps):
+        step = 'Step{}'.format(i+1)
+
+        protocols[step] = {'stimuli': [
+            {'delay': delay, 'amp': amplitudes[i], 'duration': dur, 'totduration': delay+dur+after}
+        ]}
+
+        sheet = book[step]
+        features[step] = {}
+
+        j = 1
+        while True:
+            interval = 'A{}:A{}'.format(j,j+2)
+            rows = sheet[interval]
+            if rows[0][0].value == 'Feature' and rows[1][0].value == 'Mean' and rows[2][0].value == 'Std':
+                start = j
+                break
+            j += 1
+
+        features[step]['soma'] = {}
+        j = 2
+        for letter in 'BCDEFGHIJKLMNOPQRSTUVWXYZ':
+            interval = '{}{}:{}{}'.format(letter,start,letter,start+2)
+            rows = sheet[interval]
+            if rows[0][0].value is None:
+                break
+            feature_name = rows[0][0].value
+            feature_mean = float(rows[1][0].value)
+            feature_std = float(rows[2][0].value)
+            features[step]['soma'][feature_name] = [feature_mean, feature_std]
+            j += 1
+
+    if args.suffix != '':
+        if args.suffix[0] in ('-','_'):
+            suffix = args.suffix
+        else:
+            suffix = '_' + args.suffix
+        fname,ext = os.path.splitext(args.features_file)
+        features_file = fname + suffix + ext
+        fname,ext = os.path.splitext(args.protocols_file)
+        protocols_file = fname + suffix + ext
+    json.dump(features, open(features_file,'w'), indent=4)
+    json.dump(protocols, open(protocols_file,'w'), indent=4)
+
+
+############################################################
 ###                       EXTRACT                        ###
 ############################################################
 
@@ -342,7 +439,7 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate,offset=
     voltage_range = [np.min(voltage),np.max(voltage)]
     recording_dur = time[-1]
 
-    if voltage_range[0] > -100 and (voltage_range[1] > efel.Settings().threshold and voltage_range[1] < 100):
+    if voltage_range[0] > -100 and voltage_range[1] < 100:
         plt.plot(time[idx],voltage[:,idx].T+offset,'k',lw=1)
 
     return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
@@ -354,6 +451,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
     if len(files_out) == 1:
         features = []
         has_spikes = []
+        to_keep = []
         offset = 0
         for i,f in enumerate(files_in):
             print('I = %g pA.' % current_amplitudes[i])
@@ -364,17 +462,18 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
             elif 'mean_frequency' in feat[0]:
                 # mean_frequency feature is present
                 with_spikes = [True if fe['mean_frequency'] is not None else False for fe in feat]
-            to_keep, = np.where([not all(v is None or len(v) == 0 for v in fe.values()) for fe in feat])
-            if voltage_range[0] > -100 and (voltage_range[1] > efel.Settings().threshold
-                                            and voltage_range[1] < 100):
-                for j in to_keep:
+            good, = np.where([not all(v is None or len(v) == 0 for v in fe.values()) for fe in feat])
+            if voltage_range[0] > -100 and voltage_range[1] < 100:
+                for j in good:
                     features.append({k: v for k,v in feat[j].items() if v is not None and len(v) > 0})
-                    has_spikes.append(offset + with_spikes[j])
+                    has_spikes.append(with_spikes[j])
+                    to_keep.append(offset + j)
             offset += len(feat)
         amplitudes = [current_amplitudes[i] for i in to_keep]
         idx = np.argsort(amplitudes)
         amplitudes = [amplitudes[jdx] for jdx in idx]
         features = [features[jdx] for jdx in idx]
+        has_spikes = [has_spikes[jdx] for jdx in idx]
         data = {'features': features, 'current_amplitudes': np.array(amplitudes), \
                 'stim_dur': stim_dur, 'stim_start': stim_start,
                 'has_spikes': np.array(has_spikes)}
@@ -576,7 +675,7 @@ def extract_features():
                 flag = False
             if flag and not info['sweep_index'][i] in sweeps_to_ignore and \
                info['sweep_index'][i] in good_sweeps and \
-               dur == args.stim_dur and amp > 0:
+               dur == args.stim_dur:
                 print('[%02d] dur=%g ms, amp=%g nA' % (info['sweep_index'][i],dur,amp))
                 files_in.append('%s/ad0_%d.ibw' % (folder,info['sweep_index'][i]))
                 current_amplitudes.append(amp)
@@ -686,6 +785,8 @@ def dump_features():
             print('%s: %s: no such file.' % (progname,f))
             sys.exit(1)
 
+    from itertools import chain
+
     features = []
     for f in args.files:
         features.append(json.load(open(f,'r')))
@@ -705,11 +806,15 @@ def dump_features():
                 fid.write('%s (mean),%s (std),' % (lbl.replace('_',' '),lbl.replace('_',' ')))
         fid.write('\n')
         j = 0
-        while j < len(features) and stepnum not in features[j]:
-            j += 1
-        if j == len(features):
+        feature_names = []
+        for feat in features:
+            if stepnum in feat:
+                feature_names.append(list(feat[stepnum]['soma'].keys()))
+        if len(feature_names) == 0:
             continue
-        for name in features[j][stepnum]['soma']:
+        feature_names = list(set( chain(*feature_names) ))
+        feature_names.sort()
+        for name in feature_names:
             fid.write('%s,' % name)
             for feat in features:
                 try:
@@ -722,6 +827,115 @@ def dump_features():
                     fid.write('%g,%g,' % (values[0],values[1]))
             fid.write('\n')
         fid.close()
+
+
+############################################################
+###                      PICK_FILES                      ###
+############################################################
+
+
+def pick_files():
+
+    def dump_file(infile):
+        try:
+            with open(infile, 'r') as fid:
+                print('--- ' + infile + ' ' + '-'*(30 - 5 - len(infile)))
+                for line in fid:
+                    if line != '\n':
+                        print(line.rstrip('\n'))
+                print('-' * 30)
+        except:
+            pass
+
+    parser = arg.ArgumentParser(description='Pick the files containing good sweeps.',\
+                                prog=progname+' pick-files')
+    parser.add_argument('folder', type=str, nargs='?', default='.',
+                        help='the folder where the files are located (default: .)')
+    parser.add_argument('-o', '--output', default='GOOD_SWEEPS',
+                        help='output file name (default: GOOD_SWEEPS)')
+    parser.add_argument('-f', '--force', action='store_true', help='force overwrite of output file if it exists')
+    parser.add_argument('-d', '--max-sweep-dur', default=np.inf, type=float,
+                        help='maximum sweep duration, in seconds (default: inf)')
+    parser.add_argument('-F', '--sampling-rate', default=20e3, type=float,
+                        help='sampling rate, in Hz (default: 20000)')
+
+    args = parser.parse_args(args=sys.argv[2:])
+
+    folder = args.folder
+    if not os.path.isdir(folder):
+        print('pick-files: {}: no such folder.'.format(folder))
+        sys.exit(1)
+
+    max_sweep_dur = args.max_sweep_dur
+    if max_sweep_dur <= 0:
+        print('pick-files: maximum sweep duration must be > 0.')
+        sys.exit(2)
+
+    sampling_rate = args.sampling_rate
+    if sampling_rate < 1000:
+        print('pick-files: you gave a sampling rate < 1000 Hz: are you sure that is correct?')
+        sys.exit(3)
+
+
+    history = read_ibw_history_file(folder + '/DP_Sweeper/history.ibw')
+    pulses = [True if name in ('StepPulse', 'BuiltinPulse') else False for name in history['builder_name']]
+
+    dump_file(folder + '/' + args.output)
+
+    files = glob.glob(folder + '/ad0*ibw')
+    num = [int(os.path.splitext(f)[0].split('_')[1]) for f in files]
+    files = [files[idx] for idx in np.argsort(num)]
+
+    to_keep = []
+
+    plt.ion()
+    plt.figure()
+
+    for f in files:
+        sweep_index = int(os.path.splitext(f)[0].split('_')[1])
+        try:
+            idx = np.where((np.array(history['sweep_index']) == sweep_index) & pulses)[0][0]
+        except:
+            import ipdb
+            ipdb.set_trace()
+        mult = history['multiplier'][idx]
+        pars = history['builder_parameters'][idx]
+        amp = float(pars.split(';')[1].split('=')[1])
+        data = ibw.load(f)
+        voltage = data['wave']['wData']
+        if len(voltage.shape) == 1:
+            voltage = np.array([voltage])
+        elif voltage.shape[0] > voltage.shape[1]:
+            voltage = voltage.T
+        time = np.arange(voltage.shape[1]) / sampling_rate
+        if time[-1] > max_sweep_dur:
+            continue
+        plt.plot(time, voltage.T, 'k')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Voltage (mV)')
+        plt.title('Sweep #{} I = {} pA'.format(sweep_index, amp*mult))
+        plt.show()
+        res = input('Keep {}? [y/N] '.format(f))
+        if res.lower() in ('y','yes'):
+            to_keep.append(sweep_index)
+        plt.clf()
+
+    to_keep.sort()
+
+    outfile = folder + '/' + args.output
+    if os.path.isfile(outfile) and not args.force:
+        import datetime
+        now = datetime.datetime.now()
+        outfile += '-' + now.strftime('%Y%m%d%H%M%S')
+
+    if np.max(np.diff(to_keep)) == 1:
+        fid = open(outfile, 'w')
+        fid.write('{}-{}\n'.format(to_keep[0], to_keep[-1]))
+        fid.close()
+    else:
+        np.savetxt(outfile, to_keep, fmt='%d')
+
+    dump_file(outfile)
 
 
 ############################################################
@@ -738,8 +952,10 @@ def help():
         print('Usage: %s <command> [<args>]' % progname)
         print('')
         print('Available commands are:')
+        print('   pick-files     Pick the files containing good sweeps.')
         print('   extract        Extract the features from a given cell.')
-        print('   write          Write a configuration file using data from multiple cells.')
+        print('   write          Write a configuration file using data from multiple cells stored in pkl files.')
+        print('   write-xls      Write a configuration file using data from multiple cells stored in an Excel file.')
         print('   diff           Show differences between two feature files in a human way.')
         print('   dump           Dump feature files into several CSV files.')
         print('')
@@ -752,8 +968,8 @@ def help():
 
 
 # all the commands currently implemented
-commands = {'help': help, 'extract': extract_features, 'write': write_features,
-            'diff': diff_features, 'dump': dump_features}
+commands = {'help': help, 'extract': extract_features, 'write': write_features, 'write-xls': write_features_xls,
+            'diff': diff_features, 'dump': dump_features, 'pick-files': pick_files}
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):
