@@ -791,9 +791,6 @@ def dump_features():
     for f in args.files:
         features.append(json.load(open(f,'r')))
     labels = args.files
-    idx = np.argsort(list(map(len,labels)))
-    labels = [labels[i] for i in idx]
-    features = [features[i] for i in idx]
     nsteps = 9
     for i in range(1,nsteps+1):
         stepnum = 'Step%d' % i
