@@ -154,7 +154,7 @@ def main():
 
     if args.config_file is not None and args.cell_name is None:
         print('You must specify --cell-name with --config-file.')
-        sys.exit(1)
+        sys.exit(2)
 
     parameters = json.load(open(args.params_file,'r'))
 
@@ -176,7 +176,13 @@ def main():
             replace_axon = sim_pars['replace_axon']
             print('Setting replace_axon = {} as per original optimization.'.format(replace_axon))
     else:
-        replace_axon = args.replace_axon
+        if args.replace_axon.lower() in ('y','yes'):
+            replace_axon = True
+        elif args.replace_axon.lower() in ('n','no'):
+            replace_axon = False
+        else:
+            print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
+            sys.exit(3)
 
     if args.add_axon_if_missing == None:
         if sim_pars is None:
@@ -185,7 +191,13 @@ def main():
             add_axon_if_missing = not sim_pars['no_add_axon']
             print('Setting add_axon_if_missing = {} as per original optimization.'.format(add_axon_if_missing))
     else:
-        add_axon_if_missing = args.add_axon_if_missing
+        if args.add_axon_if_missing.lower() in ('y','yes'):
+            add_axon_if_missing = True
+        elif args.add_axon_if_missing.lower() in ('n','no'):
+            add_axon_if_missing = False
+        else:
+            print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
+            sys.exit(4)
 
     rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file, parameters, mechanisms, \
                               replace_axon, add_axon_if_missing, do_plot=args.plot, verbose=args.verbose)
