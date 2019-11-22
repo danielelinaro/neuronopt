@@ -13,7 +13,7 @@
         "somatic": [
             ["gkabar_kap", 0.025, 0.1, "uniform" ],
             ["gbar_kmb", 0.0015, 0.06, "uniform" ],
-	    ["gnabar_nap", 1e-6, 1e-4, "uniform" ],
+	    ["gnabar_nap", 0, 1e-5, "uniform" ],
             ["gkdrbar_kdr", 0.001, 0.008, "uniform" ],
             ["gbar_nax", 0.02, 0.08, "uniform" ],
             ["ghdbar_hd", 0.000005, 0.00002, "uniform" ],
@@ -25,8 +25,7 @@
 	    ["Ra", 100, 400, "secvar"],
             ["g_pas", 0.5e-5, 10e-5, "uniform" ],
             ["e_pas", -80, -55, "uniform" ],
-            ["tau_cacum", 20, 1000, "uniform" ],
-            ["gamma_cacum", 0.0005, 1, "uniform" ]
+            ["tau_cacum", 20, 200, "uniform" ]
         ]
     }
 }
