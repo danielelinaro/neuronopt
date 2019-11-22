@@ -365,8 +365,8 @@ def write_features_xls():
                 break
             j += 1
 
+        print('Features start at line {} in sheet {}.'.format(j, step))
         features[step]['soma'] = {}
-        j = 2
         for letter in 'BCDEFGHIJKLMNOPQRSTUVWXYZ':
             interval = '{}{}:{}{}'.format(letter,start,letter,start+2)
             rows = sheet[interval]
@@ -375,8 +375,15 @@ def write_features_xls():
             feature_name = rows[0][0].value
             feature_mean = float(rows[1][0].value)
             feature_std = float(rows[2][0].value)
-            features[step]['soma'][feature_name] = [feature_mean, feature_std]
-            j += 1
+            if not np.isnan(feature_mean):
+                if np.isnan(feature_std) or feature_std == 0:
+                    feature_std = feature_mean / 5
+                    print('Invalid value of standard deviation for feature {} in sheet {}: setting it to {.3f}.' \
+                          .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+step+'\033[0m', feature_std))
+                features[step]['soma'][feature_name] = [feature_mean, feature_std]
+            else:
+                print('Value of feature {} in sheet {} is \033[93mNaN\033[0m: not adding feature to the JSON file.' \
+                      .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+step+'\033[0m'))
 
     if args.suffix != '':
         if args.suffix[0] in ('-','_'):
