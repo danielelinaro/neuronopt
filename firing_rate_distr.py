@@ -115,6 +115,6 @@ if __name__ == '__main__':
 
     if args.save_all:
         data['time'] = [np.array(run['t']) for run in runs]
-        data['voltage'] = {'soma': [np.array(run['Vsoma']) for run in runs]}
+        data['voltage'] = {'soma': [np.array(run['soma.v']) for run in runs]}
 
     pickle.dump(data, open(args.output,'wb'))

@@ -73,7 +73,7 @@ def worker(cell_id, args):
         recorders = inject_current_step(I[i], stim_start, stim_dur, swc_file, parameters, \
                                         mechanisms, cell_name, do_plot=False)
         h('forall delete_section()')
-        trace = {'T': recorders['t'], 'V': recorders['Vsoma'], 'stim_start': [stim_start], 'stim_end': [stim_end]}
+        trace = {'T': recorders['t'], 'V': recorders['soma.v'], 'stim_start': [stim_start], 'stim_end': [stim_end]}
         feature_names = target_features[protocols_names[i]]['soma'].keys()
         feature_values = efel.getFeatureValues([trace],feature_names)
         for name in feature_names:
