@@ -113,11 +113,11 @@ class Cell (object):
         # Create new axon array
         h.execute('create axon[2]', morpho)
 
-        L = [30,150]
+        L = [30,30]
         for index, section in enumerate(morpho.axon):
             section.L = L[index]
-            section.diam = 1 # ais_diams[index]
-            section.nseg = 1 + 2 * int(L[index]/40)
+            section.diam = ais_diams[index]
+            section.nseg = 1 #+ 2 * int(L[index]/40)
             morpho.axonal.append(sec=section)
             morpho.all.append(sec=section)
 

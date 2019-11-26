@@ -14,41 +14,58 @@ from dlutils import cell as cu
 
 progname = os.path.basename(sys.argv[0])
 
+RED = '\033[91m'
+GREEN = '\033[92m'
+STOP = '\033[0m'
+
 
 def equal_sections(sec_a, sec_b, h, soma_a=None, soma_b=None):
     if sec_a.nseg != sec_b.nseg:
-        print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-        print('{} <> {} segments.'.format(sec_a.nseg, sec_b.n_seg))
+        print('{:>25s} <> {:>17s} - {} <> {} segments' \
+              .format(sec_a.name(), sec_b.name(), RED+str(sec_a.nseg)+STOP, RED+str(sec_b.nseg)+STOP))
         return False
     try:
-        n3d_a = int(h.n3d(sec=sec_a))
-        n3d_b =  int(h.n3d(sec=sec_b))
-    except:
         n3d_a = sec_a.n3d()
         n3d_b = sec_b.n3d()
+    except:
+        n3d_a = int(h.n3d(sec=sec_a))
+        n3d_b =  int(h.n3d(sec=sec_b))
     if n3d_a != n3d_b:
         print('{} <> {}'.format(sec_a.name(), sec_b.name()))
         print('{} <> {} points.'.format(n3d_a, n3d_b))
         return False
-    for i in range(n3d_a):
-        try:
-            pt_a = np.array([h.x3d(i,sec=sec_a),
-                             h.y3d(i,sec=sec_a),
-                             h.z3d(i,sec=sec_a)])
-            pt_b = np.array([h.x3d(i,sec=sec_b),
-                             h.y3d(i,sec=sec_b),
-                             h.z3d(i,sec=sec_b)])
-        except:
-            pt_a = np.array([sec_a.x3d(i),
-                             sec_a.y3d(i),
-                             sec_a.z3d(i)])
-            pt_b = np.array([sec_b.x3d(i),
-                             sec_b.y3d(i),
-                             sec_b.z3d(i)])
-        if np.any(pt_a != pt_b):
-            print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-            print('{} <> {}.'.format(pt_a, pt_b))
+    if n3d_a == 0:
+        good = True
+        if sec_a.L != sec_b.L:
+            good = False
+            print('{:>25s} <> {:>17s} - L = {} <> {}' \
+                  .format(sec_a.name(), sec_b.name(), RED+str(sec_a.L)+STOP, RED+str(sec_b.L)+STOP))
+        if sec_a.diam != sec_b.diam:
+            good = False
+            print('{:>25s} <> {:>17s} - diam = {} <> {}' \
+                  .format(sec_a.name(), sec_b.name(), RED+str(sec_a.diam)+STOP, RED+str(sec_b.diam)+STOP))
+        if not good:
             return False
+    else:
+        for i in range(n3d_a):
+            try:
+                pt_a = np.array([h.x3d(i,sec=sec_a),
+                                 h.y3d(i,sec=sec_a),
+                                 h.z3d(i,sec=sec_a)])
+                pt_b = np.array([h.x3d(i,sec=sec_b),
+                                 h.y3d(i,sec=sec_b),
+                                 h.z3d(i,sec=sec_b)])
+            except:
+                pt_a = np.array([sec_a.x3d(i),
+                                 sec_a.y3d(i),
+                                 sec_a.z3d(i)])
+                pt_b = np.array([sec_b.x3d(i),
+                                 sec_b.y3d(i),
+                                 sec_b.z3d(i)])
+            if np.any(pt_a != pt_b):
+                print('{} <> {}'.format(sec_a.name(), sec_b.name()))
+                print('{} <> {}.'.format(pt_a, pt_b))
+                return False
     if sec_a.Ra != sec_b.Ra:
         print('{} <> {}'.format(sec_a.name(), sec_b.name()))
         print('Ra: {} <> {}.'.format(sec_a.Ra, sec_b.Ra))
@@ -109,10 +126,20 @@ def main():
     swc_file = glob.glob(folder + '*.swc')[0]
     cell_name = '_'.join(os.path.split(os.path.abspath(folder))[-1].split('_')[1:])
 
-    print('SWC file:', swc_file)
-    print('Cell name:', cell_name)
-    print('Individual ID:', individual_id)
-    print('Protocol ID:', protocol_id)
+    try:
+        sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
+        replace_axon = sim_pars['replace_axon']
+        add_axon_if_missing = not sim_pars['no_add_axon']
+    except:
+        replace_axon = False
+        add_axon_if_missing = False
+
+    print('      SWC file: {}'.format(swc_file))
+    print('     Cell name: {}'.format(cell_name))
+    print(' Individual ID: {}'.format(individual_id))
+    print('   Protocol ID: {}'.format(protocol_id))
+    print('  Replace axon: {}'.format(replace_axon))
+    print('      Add axon: {}'.format(add_axon_if_missing))
 
     # load the parameters and instantiate the cell
     parameters = json.load(open(folder + 'individual_%d.json' % individual_id,'r'))
@@ -122,7 +149,7 @@ def main():
         mechanisms['apical'] = mechanisms['alldend']
         mechanisms.pop('alldend')
     cell = cu.Cell('cell', swc_file, parameters, mechanisms)
-    cell.instantiate()
+    cell.instantiate(replace_axon, add_axon_if_missing)
 
     # load the protocols and pick the right one
     protocols = json.load(open(folder + 'protocols.json','r'))
@@ -153,10 +180,10 @@ def main():
         for sec_a,sec_b in zip(sections['eval'],sections['sim']):
             flag = equal_sections(sec_a, sec_b, sim.neuron.h, sections['eval'][0], sections['sim'][0])
             if flag:
-                msg = 'OK'
+                msg = GREEN + 'OK' + STOP
             else:
-                msg = 'NOT OK'
-            print('%25s <> %17s - %s' % (sec_a.name(),sec_b.name(),msg))
+                msg = RED + 'NOT OK' + STOP
+            print('{:>25s} <> {:>17s} - {}'.format(sec_a.name(),sec_b.name(),msg))
 
     if args.run_evaluator:
         eval_response = evaluator.run_protocols(protocols=[evaluator.fitness_protocols[protocol_name]],
