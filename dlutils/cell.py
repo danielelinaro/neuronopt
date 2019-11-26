@@ -147,6 +147,11 @@ class Cell (object):
         self.gui = h.Import3d_GUI(self.import3d, 0)
         self.gui.instantiate(self.morpho)
 
+        # this sets the number of segments in each section based only on length:
+        # this must be done before replacing the axon, otherwise the computation
+        # of the axon diameter will be wrong
+        Cell.set_nseg(self.morpho, use_dlambda_rule=False)
+
         n_axonal_sec = len([sec for sec in self.morpho.axonal])
         if replace_axon:
             if n_axonal_sec == 0:
@@ -164,9 +169,6 @@ class Cell (object):
             print('The cell has no axon: not replacing it with an AIS stub.')
         else:
             print('The cell has an axon: not replacing it with an AIS stub.')
-
-        # this sets the number of segments in each section based only on length
-        Cell.set_nseg(self.morpho, use_dlambda_rule=False)
 
         self.n_somatic_sections = len([sec for sec in self.morpho.somatic])
         self.n_axonal_sections = len([sec for sec in self.morpho.axonal])
