@@ -2,11 +2,9 @@ import os
 import sys
 import csv
 import glob
-import efel
 import json
 import pickle
 import numpy as np
-import igor.binarywave as ibw
 import argparse as arg
 import matplotlib.pyplot as plt
 
@@ -14,6 +12,8 @@ from json import encoder
 encoder.FLOAT_REPR = lambda o: format(o, '.4g')
 
 progname = os.path.basename(sys.argv[0])
+
+EFEL_AP_threshold = -20
 
 # This is the full set of voltage features to extract for each individual cell, irrespective
 # of its type. The set of features that will be used in the optimization may be different, and
@@ -406,6 +406,8 @@ def write_features_xls():
 def extract_features_from_LCG_files(files_in, kernel_file, file_out):
     import lcg
     import aec
+    import efel
+    efel.setThreshold(EFEL_AP_threshold)
     Ke = np.loadtxt(kernel_file)
     traces = []
     amplitudes = []
@@ -430,8 +432,9 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out):
 
 
 def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate,offset=0):
-    stim_end = stim_start + stim_dur
-
+    import igor.binarywave as ibw
+    import efel
+    efel.setThreshold(EFEL_AP_threshold)
     data = ibw.load(file_in)
     voltage = data['wave']['wData']
     if len(voltage.shape) == 1:
@@ -440,6 +443,7 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate,offset=
         voltage = voltage.T
     time = np.arange(voltage.shape[1]) / sampling_rate
 
+    stim_end = stim_start + stim_dur
     idx, = np.where((time>stim_start-10) & (time<=stim_end+10))
     traces = [{'T': time[idx], 'V': sweep[idx], 'stim_start': [stim_start], 'stim_end': [stim_end]} \
               for sweep in voltage]
@@ -508,6 +512,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
 
 
 def read_ibw_history_file(filename):
+    import igor.binarywave as ibw
     data = ibw.load(filename)
     rows,cols = data['wave']['wData'].shape
     tmp = [[] for _ in range(cols)]
@@ -687,6 +692,7 @@ def extract_features():
                 files_in.append('%s/ad0_%d.ibw' % (folder,info['sweep_index'][i]))
                 current_amplitudes.append(amp)
     elif mode == 'cortex':
+        import igor.binarywave as ibw
         files_in = [filename]
         file_out = os.path.basename(filename).split('.')[0] + '.pkl'
         data = ibw.load(filename)
@@ -710,7 +716,7 @@ def extract_features():
             else:
                 kernel_file = file.split('.h5')[0] + '_kernel.dat'
 
-    efel.setThreshold(args.spike_threshold)
+    EFEL_AP_threshold = args.spike_threshold
 
     if mode == 'LCG':
         extract_features_from_LCG_files(files_in, kernel_file, folder+'/'+file_out)
@@ -839,6 +845,7 @@ def dump_features():
 
 
 def pick_files():
+    import igor.binarywave as ibw
 
     def dump_file(infile):
         try:

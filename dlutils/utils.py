@@ -3,7 +3,9 @@ import json
 import pickle
 import numpy as np
 
+
 __all__ = ['extract_mechanisms', 'build_parameters_dict', 'write_parameters', 'individuals_from_pickle']
+
 
 def extract_mechanisms(params_file, cell_name):
     mechs = json.load(open(params_file,'r'))[cell_name]['mechanisms']

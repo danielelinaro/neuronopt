@@ -2,17 +2,13 @@ import os
 import sys
 import argparse as arg
 import json
-import efel
 import glob
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-import bluepyopt.ephys as ephys
-from neuron import h
-from dlutils.utils import *
+from dlutils.utils import write_parameters
 
-efel.setThreshold(0)
 
 files = {'results': {'hof_resp': 'hall_of_fame_responses.pkl',
                      'hof': 'hall_of_fame.pkl',
@@ -23,6 +19,7 @@ files = {'results': {'hof_resp': 'hall_of_fame_responses.pkl',
          'config': {'params': 'parameters.json',
                     'features': 'features.json',
                     'mechanisms': 'mechanisms.json'}}
+
 
 def load_files():
     parameters = json.load(open(files['config']['params'],'r'))
@@ -41,6 +38,8 @@ def load_files():
 
 
 def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0,dump=False,verbose=True):
+    import efel
+    efel.setThreshold(-20)
     pop_size = len(final_pop)
     n_params = len(evaluator.param_names)
 

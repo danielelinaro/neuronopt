@@ -192,7 +192,8 @@ class Cell (object):
 
     def biophysics(self, use_dlambda_rule):
 
-        for reg,mechs in self.mechanisms.items():
+        for reg in self.mechanisms:
+            mechs = self.mechanisms[reg]
             region = getattr(self.morpho,reg)
             for sec in region:
                 for mech in mechs:

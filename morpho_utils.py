@@ -4,7 +4,6 @@ import argparse as arg
 import numpy as np
 from numpy.linalg import svd
 import btmorph
-from neuron import h
 
 # the name of this script
 progname = os.path.basename(sys.argv[0])
@@ -163,12 +162,13 @@ def convert():
 def build():
     from dlutils import cell as cu
     from dlutils import utils
+    from neuron import h
     import json
     
     parser = arg.ArgumentParser(description='Use a converted morphology to build a cell in NEURON',
                                 prog=progname+' build')
     parser.add_argument('swc_file', type=str, action='store', help='SWC file')
-    parser.add_argument('-p', '--params-file', default=None, type=str, help='parameters file', required=True)
+    parser.add_argument('-p', '--params-file', default=None, type=str, help='parameters file')
     parser.add_argument('-m', '--mech-file', default=None, type=str, help='mechanisms file')
     parser.add_argument('-c', '--config-file', default=None, type=str, help='configuration file')
     parser.add_argument('-n', '--cell-name', default=None, type=str, help='cell name (required only with --config-file)')
@@ -179,9 +179,13 @@ def build():
         print('%s: %s: no such file.' % (progname,args.swc_file))
         sys.exit(1)
 
-    if not os.path.isfile(args.params_file):
-        print('%s: %s: no such file.' % (progname,args.params_file))
-        sys.exit(1)
+    if args.params_file is not None:
+        if not os.path.isfile(args.params_file):
+            print('%s: %s: no such file.' % (progname,args.params_file))
+            sys.exit(1)
+        parameters = json.load(open(args.params_file,'r'))
+    else:
+        parameters = []
 
     if args.mech_file is not None:
         if not os.path.isfile(args.mech_file):
@@ -196,19 +200,16 @@ def build():
             print('--cell-name must be present with --config-file option.')
             sys.exit(1)
         mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
-
-    parameters = json.load(open(args.params_file,'r'))
+    else:
+        mechanisms = []
 
     cell = cu.Cell('MyCell', args.swc_file, parameters, mechanisms)
     cell.instantiate()
 
     regions = ['soma','basal','apical']
-    try:
+    if len(cell.morpho.axon) > 0:
         # does the morphology have an axon?
-        spam = cell.morpho.axon[1]
         regions.append('axon')
-    except:
-        pass
     nsections = {r: 0 for r in regions}
     npoints = {r: 0 for r in regions}
     lengths = {r: 0 for r in regions}
@@ -225,10 +226,10 @@ def build():
                 print(sec.name())
                 for i in range(int(h.n3d(sec=sec))):
                     pt = np.array([h.x3d(i,sec=sec),h.y3d(i,sec=sec),h.z3d(i,sec=sec)])
-                    print('   [%d] (%.2f,%.2f,%.2f)' % (i+1,pt[0],pt[1],pt[2]))
-                print('      L = %.2f um.' % sec.L)
-                print('   diam = %.2f um.' % sec.diam)
-                print('   area = %.2f um2.' % area)
+                    print('   [{:4d}] ({:7.1f},{:7.1f},{:7.1f})'.format(i+1,pt[0],pt[1],pt[2]))
+                print('      L = {:6.1f} um.'.format(sec.L))
+                print('   diam = {:6.1f} um.'.format(sec.diam))
+                print('   area = {:6.1f} um2.'.format(area))
             lengths[reg] += sec.L
             areas[reg] += area
 
@@ -242,10 +243,10 @@ def build():
         print('        total surface area: %.0f um2' % areas[reg])
 
     print('=========================================\n')
-    print('Total number of sections: %d.' % np.sum([v for v in nsections.values()]))
-    print('Total number of points: %d.' % np.sum([v for v in npoints.values()]))
-    print('Total dendritic length: %.0f um' % np.sum([v for v in lengths.values()]))
-    print('Total surface area: %.0f um2' % np.sum([v for v in areas.values()]))
+    print(' Total number of sections: %d' % np.sum([v for v in nsections.values()]))
+    print('   Total number of points: %d' % np.sum([v for v in npoints.values()]))
+    print('   Total dendritic length: %.0f um' % np.sum([v for v in lengths.values()]))
+    print('       Total surface area: %.0f um2' % np.sum([v for v in areas.values()]))
 
 
 ############################################################
