@@ -18,7 +18,7 @@ NEURON {
 	SUFFIX cacum
 	USEION ca READ ica WRITE cai
 	NONSPECIFIC_CURRENT i
-	RANGE depth, tau, cai0, cmax:, gamma
+	RANGE depth, tau, cai0, cmax, gamma
 }
 
 UNITS {
@@ -35,7 +35,7 @@ PARAMETER {
 			: block for it to take precedence over cai0_ca_ion
 			: Do not forget to initialize in hoc if different
 			: from this default.
-	:gamma = 1 : percent of free calcium (not buffered)
+	gamma = 1 : percent of free calcium (not buffered)
 }
 
 ASSIGNED {
@@ -61,6 +61,6 @@ BREAKPOINT {
 }
 
 DERIVATIVE integrate {
-        cai' = (irest-ica)/depth/F/2 * (1e4) + (cai0 - cai)/tau
-	:cai' = (1e4) * (gamma*(irest-ica)/(2*F*depth)) + (cai0 - cai)/tau
+        :cai' = (irest-ica)/depth/F/2 * (1e4) + (cai0 - cai)/tau
+	cai' = (1e4) * (gamma*(irest-ica)/(2*F*depth)) + (cai0 - cai)/tau
 }
