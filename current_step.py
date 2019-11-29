@@ -4,6 +4,7 @@ import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
 from dlutils import cell as cu
+from dlutils import utils as dlu
 import pickle
 import json
 import time
@@ -160,7 +161,7 @@ def main():
 
     if args.config_file is not None or args.cell_name is not None:
         import dlutils
-        mechanisms = dlutils.extract_mechanisms(args.config_file, args.cell_name)
+        mechanisms = dlu.extract_mechanisms(args.config_file, args.cell_name)
     else:
         mechanisms = json.load(open(args.mech_file,'r'))
 
