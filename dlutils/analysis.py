@@ -35,13 +35,14 @@ def collect_folders(folder_patterns, cells_to_exclude, fun, base_folder='.', ver
     return folders
     
 
-def load_population_data(folder_list, flatten=True):
+def load_population_data(folder_list, n_stds=5, flatten=True):
     populations = {}
     groups = {}
     for key in folder_list:
         for i,folder in enumerate(folder_list[key]):
-            data = pickle.load(open(folder + '/good_population_5_STDs.pkl', 'rb'), \
-                              encoding='latin1')['good_population']
+            infile = folder + '/good_population_{}_STDs.pkl'.format(n_stds)
+            print('Loading data from file {}.'.format(infile))
+            data = pickle.load(open(infile, 'rb'), encoding='latin1')['good_population']
             if not key in populations:
                 populations[key] = data
                 groups[key] = np.zeros(data.shape[0])
@@ -72,7 +73,7 @@ def load_backprop_data(folder_list):
     return apical_distances,apical_AP_amplitudes
 
 
-def load_fI_data(folder_list):
+def load_fI_data(folder_list, n_stds):
     I = {}
     num_spikes = {}
     inverse_first_isi = {}
@@ -80,7 +81,9 @@ def load_fI_data(folder_list):
     for key in folder_list:
         for i,folder in enumerate(folder_list[key]):
             try:
-                data = pickle.load(open(folder + '/fI_curve_good_population_5_STDs.pkl', 'rb'), encoding='latin1')
+                infile = folder + '/fI_curve_good_population_{}_STDs.pkl'.format(n_stds)
+                print('Loading data from file {}.'.format(infile))
+                data = pickle.load(open(infile, 'rb'), encoding='latin1')
             except:
                 continue
             I[key] = data['I']
@@ -88,14 +91,16 @@ def load_fI_data(folder_list):
                             if spike_times.shape[0] > 0 else 0 for spike_times in indiv] \
                            for indiv in data['spike_times']])
             if not key in num_spikes:
-                num_spikes[key] = data['no_spikes']
+                num_spikes[key] = np.reshape([len(spks) for indiv in data['spike_times'] for spks in indiv], \
+                                             (len(data['spike_times']),len(data['spike_times'][0])))
                 inverse_first_isi[key] = data['inverse_first_isi']
                 mean_frequency[key] = mf
             else:
-                num_spikes[key] = np.r_[num_spikes[key], data['no_spikes']]
+                num_spikes[key] = np.r_[num_spikes[key], \
+                                        np.reshape([len(spks) for indiv in data['spike_times'] for spks in indiv], \
+                                                   (len(data['spike_times']),len(data['spike_times'][0])))]
                 inverse_first_isi[key] = np.r_[inverse_first_isi[key], data['inverse_first_isi']]
                 mean_frequency[key] = np.r_[mean_frequency[key], mf]
-
     return I,num_spikes,mean_frequency,inverse_first_isi
 
 
@@ -172,7 +177,7 @@ def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sor
     return None
 
 
-def plot_parameters_maps(folders, titles=None, sort_parameters=True, parameter_names_on_ticks=True):
+def plot_parameters_maps(folders, n_stds, titles=None, sort_parameters=True, parameter_names_on_ticks=True):
     if titles is None:
         titles = {k: k for k in folders}
     n_rows = len(folders)
@@ -180,7 +185,7 @@ def plot_parameters_maps(folders, titles=None, sort_parameters=True, parameter_n
     fig,axes = plt.subplots(n_rows, n_cols, figsize=(n_cols*3,n_rows*2.5), squeeze=False)
     n_ind = np.zeros((n_rows,n_cols))
     for i,condition in enumerate(folders):
-        population,groups = load_population_data(folders[condition], flatten=False)
+        population,groups = load_population_data(folders[condition], n_stds, flatten=False)
         sort_idx = None
         for j,cell in enumerate(population):
             folder = folders[condition][cell][0]

@@ -82,16 +82,23 @@ if __name__ == '__main__':
 
     if args.pickle_file == '':
         population = [json.load(open(params_file,'r')) for params_file in params_files]
+        working_dir = os.path.split(params_files[0])[0]
     else:
         if len(params_files) > 1:
             print('You cannot specify multiple parameter files and one pickle file.')
             sys.exit(1)
         population = dlu.individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
+        working_dir = os.path.split(args.pickle_file)[0]
+
+    if working_dir == '':
+        working_dir = '.'
 
     try:
-        sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
+        sim_pars = pickle.load(open(working_dir + '/simulation_parameters.pkl','rb'))
+        print('Found pickle file with simulation parameters in {}.'.format(working_dir))
     except:
         sim_pars = None
+        print('No pickle file with simulation parameters in {}.'.format(working_dir))
 
     if args.replace_axon == None:
         if sim_pars is None:
@@ -154,7 +161,8 @@ if __name__ == '__main__':
             'I': I, 'spike_times': spike_times,
             'f': f, 'no_spikes': no_spikes,
             'inverse_first_isi': inverse_first_isi,
-            'inverse_last_isi': inverse_last_isi}
+            'inverse_last_isi': inverse_last_isi,
+            'population': population}
     pickle.dump(data, open(args.output,'wb'))
     
     fig,ax = plt.subplots(1,1)
