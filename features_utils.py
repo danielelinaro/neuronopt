@@ -131,8 +131,16 @@ def write_features():
         desired_amps = None
 
     if not args.step_amps is None:
-        desired_amps = list(map(float,args.step_amps.split(',')))
-        nsteps = len(desired_amps)
+        if os.path.isfile(args.step_amps):
+            desired_amps = json.load(open(args.step_amps, 'r'))
+            nsteps = [len(amp) for amp in desired_amps.values()]
+            if len(set(nsteps)) != 1:
+                print('The number of step amplitudes in file {} must be the same for all cells.'.format(args.step_amps))
+                sys.exit(1)
+            nsteps = nsteps[0]
+        else:
+            desired_amps = list(map(float,args.step_amps.split(',')))
+            nsteps = len(desired_amps)
 
     if nsteps <= 0:
         print('%s: the number of features must be greater than 0.' % progname)
@@ -210,19 +218,12 @@ def write_features():
                 if not desired_amps[i,j] in amps:
                     desired_amps[i,j] = amps[np.argmin(np.abs(amps - desired_amps[i,j]))]
     else:
-        desired_amps = np.tile(np.array(desired_amps),(len(amplitudes),1))
+        if isinstance(desired_amps, dict):
+            desired_amps = np.array(list(desired_amps.values()))
+        else:
+            desired_amps = np.tile(np.array(desired_amps),(len(amplitudes),1))
         for i in range(len(rheobases)):
             desired_amps[i] -= rheobases[i]
-
-    # to uncomment only when running the command features_utils in control cells for the L5Dendrites project
-    #desired_amps[2][3:] -= 0.2
-
-    # to uncomment only when running the command features_utils in RS alcohol cells for the L5Dendrites project
-    #desired_amps[1][3:] -= 0.3
-
-    # to uncomment only when running the command features_utils in IB alcohol cells for the L5Dendrites project
-    #desired_amps[1][3:] -= 0.1
-    #desired_amps[3][3:] += 0.1
 
     RHEOBASE = np.mean(rheobases)
 
