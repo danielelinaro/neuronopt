@@ -102,6 +102,7 @@ def write_features():
                         help='suffix for the output file names (default: no suffix)')
     parser.add_argument('--cell-type', default='CA3',
                         help='feature set to use (default: "CA3")')
+    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
     parser.add_argument('--stim-start', default=None, type=float, help='delay before application of the stimulus')
     parser.add_argument('--stim-dur', default=None, type=float, help='duration of the stimulus')
     parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
@@ -149,6 +150,8 @@ def write_features():
     if desired_amps is None and args.round_amp <= 0:
         print('%s: the rounding amplitude  must be greater than 0.' % progname)
         sys.exit(1)
+
+    injection_site = args.injection_site
 
     if args.features_file is None:
         features_file = 'features'
@@ -241,7 +244,7 @@ def write_features():
     flatten = lambda l: [item for sublist in l if sublist is not None for item in sublist]
 
     all_features = [{} for i in range(nsteps)]
-    features_dict = {'Step%d'%i: {'soma': {}} for i in range(1,nsteps+1)}
+    features_dict = {'Step%d'%i: {injection_site: {}} for i in range(1,nsteps+1)}
     for name in feature_names[args.cell_type]:
         for i in range(len(args.files)):
             for j in range(nsteps):
@@ -256,26 +259,26 @@ def write_features():
                 stepnum = 'Step%d' % (i+1)
                 all_features[i][name] = flatten(all_features[i][name])
                 if len(all_features[i][name]) > 0:
-                    features_dict[stepnum]['soma'][name] = [np.mean(all_features[i][name]),
-                                                            np.std(all_features[i][name])]
-                    if features_dict[stepnum]['soma'][name][1] == 0:
-                        std = np.abs(features_dict[stepnum]['soma'][name][0]/5)
+                    features_dict[stepnum][injection_site][name] = [np.mean(all_features[i][name]),
+                                                                    np.std(all_features[i][name])]
+                    if features_dict[stepnum][injection_site][name][1] == 0:
+                        std = np.abs(features_dict[stepnum][injection_site][name][0]/5)
                         if std == 0:
-                            features_dict[stepnum]['soma'].pop(name)
+                            features_dict[stepnum][injection_site].pop(name)
                         else:
-                            features_dict[stepnum]['soma'][name][1] = std
-                            print(('Standard deviation of feature %s for %s is 0: ' + \
-                                   'setting it to %g.') % (name,stepnum,features_dict[stepnum]['soma'][name][1]))
+                            features_dict[stepnum][injection_site][name][1] = std
+                            print('Standard deviation of feature {} for {} @ {} is 0: setting it to {:.4f}.'\
+                                  .format(name,stepnum,injection_site,features_dict[stepnum][injection_site][name][1]))
 
     num_features = len(feature_names[args.cell_type])
     to_remove = []
     for stepnum,step in features_dict.items():
-        if len(step['soma']) == 0:
+        if len(step[injection_site]) == 0:
             to_remove.append(stepnum)
-        if args.prompt_user and len(step['soma']) < num_features:
+        if args.prompt_user and len(step[injection_site]) < num_features:
             print('Not all features were extracted for protocol "%s".' % stepnum)
             print('The extracted features are the following:\n')
-            for i,feat in enumerate(step['soma']):
+            for i,feat in enumerate(step[injection_site]):
                 print('[%02d] %s' % (i+1,feat))
             print('')
             while True:
@@ -312,10 +315,10 @@ def write_features_xls():
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
+    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
     parser.add_argument('--stim-start', default=1000, type=float, help='delay before application of the stimulus')
     parser.add_argument('--stim-dur', required=True, type=float, help='duration of the stimulus')
     parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
-
     args = parser.parse_args(args=sys.argv[2:])
 
     xls_file = args.file
@@ -340,6 +343,8 @@ def write_features_xls():
     if after < 0:
         print('{}: the time after the application of the stimulus must be >= 0.'.format(progname))
         sys.exit(4)
+
+    injection_site = args.injection_site
 
     import openpyxl
     book = openpyxl.load_workbook(xls_file)
@@ -367,7 +372,7 @@ def write_features_xls():
             j += 1
 
         print('Features start at line {} in sheet {}.'.format(j, step))
-        features[step]['soma'] = {}
+        features[step][injection_site] = {}
         for letter in 'BCDEFGHIJKLMNOPQRSTUVWXYZ':
             interval = '{}{}:{}{}'.format(letter,start,letter,start+2)
             rows = sheet[interval]
@@ -381,7 +386,7 @@ def write_features_xls():
                     feature_std = feature_mean / 5
                     print('Invalid value of standard deviation for feature {} in sheet {}: setting it to {.3f}.' \
                           .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+step+'\033[0m', feature_std))
-                features[step]['soma'][feature_name] = [feature_mean, feature_std]
+                features[step][injection_site][feature_name] = [feature_mean, feature_std]
             else:
                 print('Value of feature {} in sheet {} is \033[93mNaN\033[0m: not adding feature to the JSON file.' \
                       .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+step+'\033[0m'))
@@ -742,6 +747,7 @@ def extract_features():
 def diff_features():
     parser = arg.ArgumentParser(description='Show differences between two feature files.',
                                 prog=progname+' diff')
+    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
     parser.add_argument('files', type=str, nargs=2, help='feature files')
 
     args = parser.parse_args(args=sys.argv[2:])
@@ -751,14 +757,16 @@ def diff_features():
             print('%s: %s: no such file.' % (progname,f))
             sys.exit(1)
 
+    injection_site = args.injection_site
+
     features = [json.load(open(f,'r')) for f in args.files]
     arrow = ['<','>']
     for step_num in features[0].keys():
         printed_header = False
         if step_num in features[1].keys():
-            for feature_name in features[0][step_num]['soma'].keys():
-                if feature_name in features[1][step_num]['soma'].keys():
-                    feature_values = np.array([feat[step_num]['soma'][feature_name] for feat in features])
+            for feature_name in features[0][step_num][injection_site].keys():
+                if feature_name in features[1][step_num][injection_site].keys():
+                    feature_values = np.array([feat[step_num][injection_site][feature_name] for feat in features])
                     if np.any(np.abs(np.diff(feature_values,axis=0)) > 1e-6):
                         if not printed_header:
                             print('%s:' % step_num)
@@ -776,8 +784,8 @@ def diff_features():
             if not step_num in features[other].keys():
                 print('%s %s' % (arrow[this],step_num))
             else:
-                for feature_name in features[this][step_num]['soma'].keys():
-                    if not feature_name in features[other][step_num]['soma'].keys():
+                for feature_name in features[this][step_num][injection_site].keys():
+                    if not feature_name in features[other][step_num][injection_site].keys():
                         print('%s %s:%s' % (arrow[this],step_num,feature_name))
 
 
@@ -790,9 +798,12 @@ def dump_features():
     parser = arg.ArgumentParser(description='Dump feature files into several CSV files.',
                                 prog=progname+' dump')
     parser.add_argument('files', type=str, nargs='+', help='feature files')
+    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
     parser.add_argument('--no-std', action='store_true', help='do not dump the standard deviation')
 
     args = parser.parse_args(args=sys.argv[2:])
+
+    injection_site = args.injection_site
 
     for f in args.files:
         if not os.path.isfile(f):
@@ -808,7 +819,7 @@ def dump_features():
     nsteps = 9
     for i in range(1,nsteps+1):
         stepnum = 'Step%d' % i
-        fid = open(stepnum + '.csv','w')
+        fid = open('{}_{}.csv'.format(stepnum, injection_site), 'w')
         fid.write('Feature,')
         for lbl in labels:
             if args.no_std:
@@ -820,7 +831,7 @@ def dump_features():
         feature_names = []
         for feat in features:
             if stepnum in feat:
-                feature_names.append(list(feat[stepnum]['soma'].keys()))
+                feature_names.append(list(feat[stepnum][injection_site].keys()))
         if len(feature_names) == 0:
             continue
         feature_names = list(set( chain(*feature_names) ))
@@ -829,7 +840,7 @@ def dump_features():
             fid.write('%s,' % name)
             for feat in features:
                 try:
-                    values = feat[stepnum]['soma'][name]
+                    values = feat[stepnum][injection_site][name]
                 except:
                     values = [np.nan,np.nan]
                 if args.no_std:
