@@ -343,7 +343,7 @@ def read_sheet(book, stimulus_name, recording_site):
 
 
 def write_features_xls():
-    bap_amplitude = 4000
+    bap_amplitude = 4
     bap_dur = 2
     bap_delay = 1000
 
@@ -421,6 +421,14 @@ def write_features_xls():
         bap_dur = args.bap_dur
     if args.bap_delay is not None:
         bap_delay = args.bap_delay
+
+    if bap_amplitude > 50:
+        print('{}: pulse amplitude for b-AP protocol is > 50 nA: are you sure that is correct?')
+        sys.exit(7)
+
+    if bap_dur < 0.2:
+        print('{}: pulse duration for b-AP protocol is < 0.2 ms: are you sure that is correct?')
+        sys.exit(8)
 
     import openpyxl
     book = openpyxl.load_workbook(xls_file)
