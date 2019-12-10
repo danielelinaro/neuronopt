@@ -8,9 +8,6 @@ import numpy as np
 import argparse as arg
 import matplotlib.pyplot as plt
 
-from json import encoder
-encoder.FLOAT_REPR = lambda o: format(o, '.4g')
-
 progname = os.path.basename(sys.argv[0])
 
 EFEL_AP_threshold = -20
@@ -32,7 +29,7 @@ feature_names_full_set = ['AP_amplitude','AP_begin_voltage','spike_half_width',
                           'Spikecount', 'time_to_last_spike',
                           'inv_time_to_first_spike', 'inv_first_ISI',
                           'inv_second_ISI', 'inv_third_ISI', 'inv_fourth_ISI',
-                          'inv_fifth_ISI', 'inv_last_ISI']
+                          'inv_fifth_ISI', 'inv_last_ISI', 'AP_amplitude_from_voltagebase']
 
 feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                          'AP_fall_rate','AP_rise_rate','AHP_slow_time',
@@ -46,6 +43,8 @@ feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                              'AP_width','time_to_first_spike','AHP_depth_abs',
                              'adaptation_index2','mean_frequency','Spikecount',
                              'voltage_base','voltage_deflection'],
+                 'BBP_CTX_bAP': ['AP_height', 'AP_width', 'Spikecount',
+                                 'voltage_base', 'AP_amplitude_from_voltagebase'],
                  'BBP_HPC': ['voltage_base', 'steady_state_voltage',
                              'voltage_deflection', 'voltage_deflection_begin',
                              'Spikecount', 'time_to_last_spike',
@@ -102,7 +101,7 @@ def write_features():
                         help='suffix for the output file names (default: no suffix)')
     parser.add_argument('--cell-type', default='CA3',
                         help='feature set to use (default: "CA3")')
-    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
+    parser.add_argument('--recording-site', default='soma', help='recording site (default: "soma")')
     parser.add_argument('--stim-start', default=None, type=float, help='delay before application of the stimulus')
     parser.add_argument('--stim-dur', default=None, type=float, help='duration of the stimulus')
     parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
@@ -151,7 +150,7 @@ def write_features():
         print('%s: the rounding amplitude  must be greater than 0.' % progname)
         sys.exit(1)
 
-    injection_site = args.injection_site
+    recording_site = args.recording_site
 
     if args.features_file is None:
         features_file = 'features'
@@ -244,7 +243,7 @@ def write_features():
     flatten = lambda l: [item for sublist in l if sublist is not None for item in sublist]
 
     all_features = [{} for i in range(nsteps)]
-    features_dict = {'Step%d'%i: {injection_site: {}} for i in range(1,nsteps+1)}
+    features_dict = {'Step%d'%i: {recording_site: {}} for i in range(1,nsteps+1)}
     for name in feature_names[args.cell_type]:
         for i in range(len(args.files)):
             for j in range(nsteps):
@@ -259,26 +258,26 @@ def write_features():
                 stepnum = 'Step%d' % (i+1)
                 all_features[i][name] = flatten(all_features[i][name])
                 if len(all_features[i][name]) > 0:
-                    features_dict[stepnum][injection_site][name] = [np.mean(all_features[i][name]),
+                    features_dict[stepnum][recording_site][name] = [np.mean(all_features[i][name]),
                                                                     np.std(all_features[i][name])]
-                    if features_dict[stepnum][injection_site][name][1] == 0:
-                        std = np.abs(features_dict[stepnum][injection_site][name][0]/5)
+                    if features_dict[stepnum][recording_site][name][1] == 0:
+                        std = np.abs(features_dict[stepnum][recording_site][name][0]/5)
                         if std == 0:
-                            features_dict[stepnum][injection_site].pop(name)
+                            features_dict[stepnum][recording_site].pop(name)
                         else:
-                            features_dict[stepnum][injection_site][name][1] = std
+                            features_dict[stepnum][recording_site][name][1] = std
                             print('Standard deviation of feature {} for {} @ {} is 0: setting it to {:.4f}.'\
-                                  .format(name,stepnum,injection_site,features_dict[stepnum][injection_site][name][1]))
+                                  .format(name,stepnum,recording_site,features_dict[stepnum][recording_site][name][1]))
 
     num_features = len(feature_names[args.cell_type])
     to_remove = []
     for stepnum,step in features_dict.items():
-        if len(step[injection_site]) == 0:
+        if len(step[recording_site]) == 0:
             to_remove.append(stepnum)
-        if args.prompt_user and len(step[injection_site]) < num_features:
+        if args.prompt_user and len(step[recording_site]) < num_features:
             print('Not all features were extracted for protocol "%s".' % stepnum)
             print('The extracted features are the following:\n')
-            for i,feat in enumerate(step[injection_site]):
+            for i,feat in enumerate(step[recording_site]):
                 print('[%02d] %s' % (i+1,feat))
             print('')
             while True:
@@ -303,7 +302,51 @@ def write_features():
 ############################################################
 
 
+def read_sheet(book, stimulus_name, recording_site):
+    if stimulus_name in book:
+        sheet_name = stimulus_name
+    elif (stimulus_name + '_' + recording_site) in book:
+        sheet_name = stimulus_name + '_' + recording_site
+    else:
+        return None
+    sheet = book[sheet_name]
+
+    j = 1
+    while True:
+        interval = 'A{}:A{}'.format(j,j+2)
+        rows = sheet[interval]
+        if rows[0][0].value == 'Feature' and rows[1][0].value == 'Mean' and rows[2][0].value == 'Std':
+            start = j
+            break
+        j += 1
+
+    print('Features start at line {} in sheet {}.'.format(j, sheet_name))
+    features = {}
+    for letter in 'BCDEFGHIJKLMNOPQRSTUVWXYZ':
+        interval = '{}{}:{}{}'.format(letter,start,letter,start+2)
+        rows = sheet[interval]
+        if rows[0][0].value is None:
+            break
+        feature_name = rows[0][0].value
+        feature_mean = float(rows[1][0].value)
+        feature_std = float(rows[2][0].value)
+        if not np.isnan(feature_mean):
+            if np.isnan(feature_std) or feature_std == 0:
+                feature_std = feature_mean / 5
+                print('Invalid value of standard deviation for feature {} in sheet {}: setting it to {.3f}.' \
+                      .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+stimulus_name+'\033[0m', feature_std))
+            features[feature_name] = [feature_mean, feature_std]
+        else:
+            print('Value of feature {} in sheet {} is \033[93mNaN\033[0m: not adding feature to the JSON file.' \
+                  .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+stimulus_name+'\033[0m'))
+    return features
+
+
 def write_features_xls():
+    bap_amplitude = 4000
+    bap_dur = 2
+    bap_delay = 1000
+
     parser = arg.ArgumentParser(description='Write configuration file using features from multiple cells stored in an Excel file.',
                                 prog=progname+' write-xls')
     parser.add_argument('file', type=str, help='the Excel file contaning the features')
@@ -315,10 +358,17 @@ def write_features_xls():
                         help='output protocols file name (deault: protocols.json)')
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
-    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
+    parser.add_argument('--recording-sites', default='soma', help='recording sites (default: "soma")')
     parser.add_argument('--stim-start', default=1000, type=float, help='delay before application of the stimulus')
     parser.add_argument('--stim-dur', required=True, type=float, help='duration of the stimulus')
     parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
+    parser.add_argument('--with-bap', action='store_true', help='add b-AP stimulus')
+    parser.add_argument('--bap-amplitude', default=None, type=float, \
+                        help='b-AP stimulus amplitude (default: {} pA)'.format(bap_amplitude))
+    parser.add_argument('--bap-dur', default=None, type=float, \
+                        help='b-AP stimulus duration (default: {} ms)'.format(bap_dur))
+    parser.add_argument('--bap-delay', default=None, type=float, \
+                        help='b-AP stimulus delay (default: {} ms)'.format(bap_delay))
     args = parser.parse_args(args=sys.argv[2:])
 
     xls_file = args.file
@@ -344,7 +394,33 @@ def write_features_xls():
         print('{}: the time after the application of the stimulus must be >= 0.'.format(progname))
         sys.exit(4)
 
-    injection_site = args.injection_site
+    recording_sites = args.recording_sites.split(',')
+    n_recording_sites = len(recording_sites)
+
+    if n_recording_sites > 1:
+        try:
+            extra_recordings = json.load(open('extra_recordings.json','r'))
+        except:
+            print('{}: file `extra_recordings.json` is required when more than one recording site are present.'.format(progname))
+            sys.exit(5)
+
+    if args.with_bap:
+        with_bap = True
+    elif args.bap_amplitude is not None or args.bap_dur is not None or args.bap_delay is not None:
+        with_bap = True
+    else:
+        with_bap = False
+
+    if with_bap and n_recording_sites == 1:
+        print('{}: cannot have b-AP stimulus with just one recording site.'.format(progname))
+        sys.exit(6)
+
+    if args.bap_amplitude is not None:
+        bap_amplitude = args.bap_amplitude
+    if args.bap_dur is not None:
+        bap_dur = args.bap_dur
+    if args.bap_delay is not None:
+        bap_delay = args.bap_delay
 
     import openpyxl
     book = openpyxl.load_workbook(xls_file)
@@ -354,42 +430,25 @@ def write_features_xls():
 
     for i in range(n_steps):
         step = 'Step{}'.format(i+1)
-
         protocols[step] = {'stimuli': [
             {'delay': delay, 'amp': amplitudes[i], 'duration': dur, 'totduration': delay+dur+after}
         ]}
-
-        sheet = book[step]
+        if step in extra_recordings:
+            protocols[step]['extra_recordings'] = extra_recordings[step]['extra_recordings']
         features[step] = {}
-
-        j = 1
-        while True:
-            interval = 'A{}:A{}'.format(j,j+2)
-            rows = sheet[interval]
-            if rows[0][0].value == 'Feature' and rows[1][0].value == 'Mean' and rows[2][0].value == 'Std':
-                start = j
-                break
-            j += 1
-
-        print('Features start at line {} in sheet {}.'.format(j, step))
-        features[step][injection_site] = {}
-        for letter in 'BCDEFGHIJKLMNOPQRSTUVWXYZ':
-            interval = '{}{}:{}{}'.format(letter,start,letter,start+2)
-            rows = sheet[interval]
-            if rows[0][0].value is None:
-                break
-            feature_name = rows[0][0].value
-            feature_mean = float(rows[1][0].value)
-            feature_std = float(rows[2][0].value)
-            if not np.isnan(feature_mean):
-                if np.isnan(feature_std) or feature_std == 0:
-                    feature_std = feature_mean / 5
-                    print('Invalid value of standard deviation for feature {} in sheet {}: setting it to {.3f}.' \
-                          .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+step+'\033[0m', feature_std))
-                features[step][injection_site][feature_name] = [feature_mean, feature_std]
-            else:
-                print('Value of feature {} in sheet {} is \033[93mNaN\033[0m: not adding feature to the JSON file.' \
-                      .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+step+'\033[0m'))
+        for recording_site in recording_sites:
+            feat = read_sheet(book, step, recording_site)
+            if feat is None:
+                print('{} does not contain a sheet named {} or {}.'.format(xls_file, step, step+'_'+recording_site))
+                continue
+            features[step][recording_site] = feat
+    if with_bap:
+        protocols['bAP'] = {'stimuli': [
+            {'delay': bap_delay, 'amp': bap_amplitude, 'duration': bap_dur, \
+             'totduration': bap_delay+bap_dur+100}
+        ]}
+        protocols['bAP']['extra_recordings'] = extra_recordings['bAP']['extra_recordings']
+        features['bAP'] = {site: read_sheet(book, 'bAP', site) for site in recording_sites}
 
     if args.suffix != '':
         if args.suffix[0] in ('-','_'):
@@ -450,7 +509,10 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate,offset=
     time = np.arange(voltage.shape[1]) / sampling_rate
 
     stim_end = stim_start + stim_dur
-    idx, = np.where((time>stim_start-10) & (time<=stim_end+10))
+    if stim_dur > 100:
+        idx, = np.where((time>stim_start-10) & (time<=stim_end+10))
+    else:
+        idx, = np.where((time>stim_start-5) & (time<=stim_end+5))
     traces = [{'T': time[idx], 'V': sweep[idx], 'stim_start': [stim_start], 'stim_end': [stim_end]} \
               for sweep in voltage]
     voltage_range = [np.min(voltage),np.max(voltage)]
@@ -471,7 +533,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         to_keep = []
         offset = 0
         for i,f in enumerate(files_in):
-            print('I = %g pA.' % current_amplitudes[i])
+            print('I = %g nA.' % current_amplitudes[i])
             feat,voltage_range,_ = extract_features_from_file(f,stim_dur,stim_start,sampling_rate)
             if 'Spikecount' in feat[0]:
                 # Spikecount feature is present
@@ -606,6 +668,8 @@ def extract_features():
                         help='minimum injected current, in nA')
     parser.add_argument('--Istep', default=0.1, type=float,
                         help='current step (default 0.1 nA)')
+    parser.add_argument('--Ipulse', default=None, type=float,
+                        help='current pulse (default 2 nA)')
     parser.add_argument('--spike-threshold', default=-20., type=float,
                         help='spike threshold (default -20 mV)')
     parser.add_argument('--quiet', action='store_true', help='be quiet')
@@ -655,7 +719,6 @@ def extract_features():
                   (progname+'-extract',history_file))
             sys.exit(5)
 
-    if mode == 'CA3':
         try:
             sweeps_to_ignore = parse_sweeps(folder + '/IGNORE_SWEEPS')
         except:
@@ -702,16 +765,20 @@ def extract_features():
         files_in = [filename]
         file_out = os.path.basename(filename).split('.')[0] + '.pkl'
         data = ibw.load(filename)
-        Istep = args.Istep
         nsteps = data['wave']['wData'].shape[1]
-        if args.Imin is None:
-            s = np.std(data['wave']['wData'],0)
-            Imin = -args.Istep*np.argmin(s)
-            print('Guessing the minimum value of injected current: %g nA.' % Imin)
+        if args.Ipulse is None:
+            Istep = args.Istep
+            if args.Imin is None:
+                s = np.std(data['wave']['wData'],0)
+                Imin = -args.Istep*np.argmin(s)
+                print('Guessing the minimum value of injected current: %g nA.' % Imin)
+            else:
+                Imin = args.Imin
+            current_amplitudes = np.arange(nsteps)*Istep + Imin
+            current_amplitudes = current_amplitudes.tolist()
         else:
-            Imin = args.Imin
-        current_amplitudes = np.arange(nsteps)*Istep + Imin
-        current_amplitudes = current_amplitudes.tolist()
+            Ipulse = args.Ipulse
+            current_amplitudes = [Ipulse for _ in range(nsteps)]
     elif mode == 'LCG':
         h5_files = glob.glob(folder + '/*.h5')
         files_in = []
@@ -732,8 +799,6 @@ def extract_features():
 
     plt.xlabel('Time (ms)')
     plt.ylabel('Voltage (mV)')
-    plt.plot([0,0],[-30,20],'k',lw=1)
-    plt.plot([0,100],[-30,-30],'k',lw=1)
     plt.savefig(folder+'/'+file_out.split('.pkl')[0]+'.pdf',dpi=300)
     if not args.quiet:
         plt.show()
@@ -747,7 +812,7 @@ def extract_features():
 def diff_features():
     parser = arg.ArgumentParser(description='Show differences between two feature files.',
                                 prog=progname+' diff')
-    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
+    parser.add_argument('--recording-site', default='soma', help='recording site (default: "soma")')
     parser.add_argument('files', type=str, nargs=2, help='feature files')
 
     args = parser.parse_args(args=sys.argv[2:])
@@ -757,16 +822,16 @@ def diff_features():
             print('%s: %s: no such file.' % (progname,f))
             sys.exit(1)
 
-    injection_site = args.injection_site
+    recording_site = args.recording_site
 
     features = [json.load(open(f,'r')) for f in args.files]
     arrow = ['<','>']
     for step_num in features[0].keys():
         printed_header = False
         if step_num in features[1].keys():
-            for feature_name in features[0][step_num][injection_site].keys():
-                if feature_name in features[1][step_num][injection_site].keys():
-                    feature_values = np.array([feat[step_num][injection_site][feature_name] for feat in features])
+            for feature_name in features[0][step_num][recording_site].keys():
+                if feature_name in features[1][step_num][recording_site].keys():
+                    feature_values = np.array([feat[step_num][recording_site][feature_name] for feat in features])
                     if np.any(np.abs(np.diff(feature_values,axis=0)) > 1e-6):
                         if not printed_header:
                             print('%s:' % step_num)
@@ -784,8 +849,8 @@ def diff_features():
             if not step_num in features[other].keys():
                 print('%s %s' % (arrow[this],step_num))
             else:
-                for feature_name in features[this][step_num][injection_site].keys():
-                    if not feature_name in features[other][step_num][injection_site].keys():
+                for feature_name in features[this][step_num][recording_site].keys():
+                    if not feature_name in features[other][step_num][recording_site].keys():
                         print('%s %s:%s' % (arrow[this],step_num,feature_name))
 
 
@@ -798,12 +863,12 @@ def dump_features():
     parser = arg.ArgumentParser(description='Dump feature files into several CSV files.',
                                 prog=progname+' dump')
     parser.add_argument('files', type=str, nargs='+', help='feature files')
-    parser.add_argument('--injection-site', default='soma', help='injection site (default: "soma")')
+    parser.add_argument('--recording-site', default='soma', help='recording site (default: "soma")')
     parser.add_argument('--no-std', action='store_true', help='do not dump the standard deviation')
 
     args = parser.parse_args(args=sys.argv[2:])
 
-    injection_site = args.injection_site
+    recording_site = args.recording_site
 
     for f in args.files:
         if not os.path.isfile(f):
@@ -819,7 +884,7 @@ def dump_features():
     nsteps = 9
     for i in range(1,nsteps+1):
         stepnum = 'Step%d' % i
-        fid = open('{}_{}.csv'.format(stepnum, injection_site), 'w')
+        fid = open('{}_{}.csv'.format(stepnum, recording_site), 'w')
         fid.write('Feature,')
         for lbl in labels:
             if args.no_std:
@@ -831,7 +896,7 @@ def dump_features():
         feature_names = []
         for feat in features:
             if stepnum in feat:
-                feature_names.append(list(feat[stepnum][injection_site].keys()))
+                feature_names.append(list(feat[stepnum][recording_site].keys()))
         if len(feature_names) == 0:
             continue
         feature_names = list(set( chain(*feature_names) ))
@@ -840,7 +905,7 @@ def dump_features():
             fid.write('%s,' % name)
             for feat in features:
                 try:
-                    values = feat[stepnum][injection_site][name]
+                    values = feat[stepnum][recording_site][name]
                 except:
                     values = [np.nan,np.nan]
                 if args.no_std:

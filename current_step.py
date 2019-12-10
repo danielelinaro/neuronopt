@@ -36,8 +36,8 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
     apc.record(recorders['spike_times'])
     spike_times = []
 
-    mech_vars = {'kca': 'gk', 'kap': 'gka', 'cat': 'gcat', 'cal': 'gcal', 'can': 'gcan', \
-                 'cagk': 'gkca', 'kad': 'gka'}
+    CA3_mech_vars = {'kca': 'gk', 'kap': 'gka', 'cat': 'gcat', 'cal': 'gcal', 'can': 'gcan', \
+                     'cagk': 'gkca', 'kad': 'gka'}
 
     for lbl in 't','soma.v','soma.cai','soma.ica','axon.v','apic.v','basal.v':
         recorders[lbl] = h.Vector()
@@ -52,7 +52,7 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
         print('The cell has no axon.')
     if cell.n_apical_sections > 0:
         for sec,dst in zip(cell.morpho.apic,cell.apical_path_lengths):
-            if dst[0] >= 100:
+            if dst[0] >= 200:
                 recorders['apic.v'].record(sec(0.5)._ref_v)
                 break
     if cell.n_basal_sections > 0:
@@ -64,10 +64,10 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
     gbars = {}
     for mech in cell.morpho.soma[0](0.5):
         name = mech.name()
-        if name in mech_vars:
-            key = 'soma.' + mech_vars[name] + '_' + name
+        if name in CA3_mech_vars:
+            key = 'soma.' + CA3_mech_vars[name] + '_' + name
             recorders[key] = h.Vector()
-            recorders[key].record(getattr(cell.morpho.soma[0](0.5), '_ref_' + mech_vars[name] + '_' + name))
+            recorders[key].record(getattr(cell.morpho.soma[0](0.5), '_ref_' + CA3_mech_vars[name] + '_' + name))
             try:
                 gbars[key] = getattr(cell.morpho.soma[0](0.5), 'gbar_' + name)
             except:
@@ -76,9 +76,13 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
                 except:
                     gbars[key] = getattr(cell.morpho.soma[0](0.5), 'g' + name[:2] + 'bar_' + name)
 
-    recorders['soma.m_kmb'] = h.Vector()
-    recorders['soma.m_kmb'].record(cell.morpho.soma[0](0.5)._ref_m_kmb)
-    gbars['soma.m_kmb'] = 1
+    try:
+        rec = h.Vector()
+        rec.record(cell.morpho.soma[0](0.5)._ref_m_kmb)
+        recorders['soma.m_kmb'] = rec
+        gbars['soma.m_kmb'] = 1
+    except:
+        pass
 
     h.cvode_active(1)
     h.tstop = stim.dur + stim.delay + 100
@@ -100,26 +104,30 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
     if do_plot:
         fig,ax = plt.subplots(3, 1, sharex=True, figsize=(6,4))
         t = np.array(recorders['t'])
-        ax[0].plot(t,recorders['soma.v'],'k')
+        ax[0].plot(t,recorders['soma.v'],'k',label='Soma')
+        ax[0].plot(t,recorders['apic.v'],'r',label='Apical')
+        ax[0].plot(t,recorders['basal.v'],'g',label='Basal')
         ax[0].set_ylabel(r'$V_m$ (mV)')
+        ax[0].legend(loc='best')
         ax[1].plot(t,np.array(recorders['soma.cai'])*1e3,'k')
         ax[1].set_ylabel(r'$Ca_i$ ($\mu$M)')
         ax[2].plot(t,np.array(recorders['soma.ica'])*1e6,'k')
         ax[2].set_ylabel(r'$I_{Ca}$ (pA)')
         ax[2].set_xlabel('Time (ms)')
         ax[2].set_xlim([stim.delay - 50, stim.delay + stim.dur + 100])
-        fig,ax = plt.subplots(1, 1, figsize=(6,4))
-        for name,rec in recorders.items():
-            if 'soma' in name and not name.split('.')[1] in ('v','cai','ica'):
-                ax.plot(recorders['t'], np.array(rec)/gbars[name], label=name)
-        ax.legend(loc='best')
-        ax.set_xlim([stim.delay - 50, stim.delay + stim.dur + 100])
-        ## phase-space plot: to be perfected...
-        #fig,ax = plt.subplots(1, 1, figsize=(6,4))
-        #idx, = np.where(t > 1000)
-        #v = np.array(recorders['soma.v'])[idx]
-        #m = np.array(recorders['soma.m_kmb'])[idx]
-        #ax.plot(v,m,'k')
+        if len(gbars) > 0:
+            fig,ax = plt.subplots(1, 1, figsize=(6,4))
+            for name,rec in recorders.items():
+                if 'soma' in name and not name.split('.')[1] in ('v','cai','ica'):
+                    ax.plot(recorders['t'], np.array(rec)/gbars[name], label=name)
+            ax.legend(loc='best')
+            ax.set_xlim([stim.delay - 50, stim.delay + stim.dur + 100])
+            ## phase-space plot: to be perfected...
+            #fig,ax = plt.subplots(1, 1, figsize=(6,4))
+            #idx, = np.where(t > 1000)
+            #v = np.array(recorders['soma.v'])[idx]
+            #m = np.array(recorders['soma.m_kmb'])[idx]
+            #ax.plot(v,m,'k')
         plt.show()
         
     h('forall delete_section()')
