@@ -333,7 +333,7 @@ def read_sheet(book, stimulus_name, recording_site):
         if not np.isnan(feature_mean):
             if np.isnan(feature_std) or feature_std == 0:
                 feature_std = feature_mean / 5
-                print('Invalid value of standard deviation for feature {} in sheet {}: setting it to {.3f}.' \
+                print('Invalid value of standard deviation for feature {} in sheet {}: setting it to {:.3f}.' \
                       .format('\033[93m'+feature_name+'\033[0m', '\033[94m'+stimulus_name+'\033[0m', feature_std))
             features[feature_name] = [feature_mean, feature_std]
         else:
