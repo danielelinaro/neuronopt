@@ -60,8 +60,9 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     features_std_units = {}
     all_feature_names = []
     proto_names = target_features.keys()
+    site_names = []
     for proto,target_feature in target_features.items():
-        site_names = target_feature.keys()
+        site_names.extend(list(target_feature.keys()))
         features[proto] = {}
         features_std_units[proto] = {}
         for site in target_feature:
@@ -90,6 +91,8 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
                               (name,features[proto][site][name][0],features_std_units[proto][site][name],
                                values[0],values[1],values[1]/np.abs(values[0])))
 
+    site_names = list(set(site_names))
+    site_names = sorted(site_names, key = lambda s: 'a' if s == 'soma' else s, reverse = True)
     n_proto = len(proto_names)
     n_sites = len(site_names)
 
@@ -108,14 +111,19 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
             fid.write('\n')
         fid.close()
 
-    plt.figure(figsize=(6,5+(n_sites-1)*2))
-    plt.axes([0.01,0.75,0.98,0.25])
+    h = 5 + (n_sites - 1) * 1 # [in]
+    top = 1.25 # [in]
+    bottom = 1.75 # [in]
+    plt.figure(figsize=(6,h))
+    plt.axes([0.01,1-top/h,0.98,top/h])
     offset = 0
     before = 250
     after = 200
     dx = 100
     dy = 50
-    colors = 'krgbcmy'
+    colors = 'rgbcmyk'
+    colors = colors[:n_sites-1]
+    colors += 'k'
     cmap = {site: col for site,col in zip(site_names,colors)}
     if dump:
         fid = open('{}_individual_{}_traces.csv'.format(os.path.basename(os.path.abspath('.')),individual), 'w')
@@ -124,6 +132,8 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
         l_max = -1e6
         for site in site_names:
             key = '{}.{}.v'.format(proto,site)
+            if not key in responses[individual]:
+                continue
             resp = responses[individual][key]
             # this is because of the variable time-step integration
             start = np.max((0,np.where(resp['time'] > stim_start-before)[0][0] - 1))
@@ -160,16 +170,18 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     plt.axis('off')
 
     fnt = 8
-    offset = {'x': 0.175, 'y': 0.4}
+    offset = {'x': 0.175, 'y': 0.125 + bottom/h}
     space = {'x': 0.03, 'y': 0.06}
     dx = (0.97 - offset['x'] - (n_proto-1)*space['x'])/n_proto
-    dy = (0.7 - offset['y'] - (n_sites-1)*space['y'])/n_sites
+    dy = (1 - top/h - 0.035 - offset['y'] - (n_sites-1)*space['y'])/n_sites
     all_feature_names = sorted(all_feature_names)
     n_features = len(all_feature_names)
     Y = list(range(n_features,0,-1))
     green = [0,.7,.3]
     for i,proto in enumerate(proto_names):
         for j,site in enumerate(site_names):
+            if not site in features_std_units[proto]:
+                continue
             ax = plt.axes([offset['x']+i*(dx+space['x']),offset['y']+j*(dy+space['y']),dx,dy])
             feat = features_std_units[proto][site]
             X = np.zeros(n_features)
@@ -203,7 +215,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
             ax.set_ylim([np.min(Y)-1,np.max(Y)+1])
 
     blue = [.9,.9,1]
-    ax = plt.axes([0.25,0.05,0.72,0.25])
+    ax = plt.axes([0.25,0.05,0.72,bottom/h])
     dy = 0.3
     plot = plt.semilogx
     for y0,(par,best_par,m,b) in enumerate(zip(params,best_params,params_median,bounds)):
