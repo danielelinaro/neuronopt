@@ -13,8 +13,12 @@ import btmorph
 from scipy.interpolate import NearestNDInterpolator
 
 from dlutils import cell as cu
-import dlutils as dl
+from dlutils.utils import *
+from dlutils.graphics import *
+from dlutils.analysis import plot_parameters_map
 import neuron
+
+set_rc_defaults()
 
 use_scoop = False
 if use_scoop:
@@ -27,7 +31,8 @@ else:
     map_fun = map
 
 
-def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_name=None, neuron=None, do_plot=False):
+def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace_axon=False, \
+                        add_axon_if_missing=True, cell_name=None, neuron=None, do_plot=False):
 
     if use_scoop:
         print('Disabling plot because of SCOOP.')
@@ -38,7 +43,7 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
         cell_name = 'cell_%06d' % random.randint(0,999999)
 
     cell = cu.Cell(cell_name, swc_file, parameters, mechanisms)
-    cell.instantiate()
+    cell.instantiate(replace_axon, add_axon_if_missing)
 
     if neuron is None:
         h = cu.h
@@ -107,7 +112,7 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
     AP_amplitudes = {'somatic': np.max(V_soma[idx]) - V_soma[start]}
     V_rest = {'somatic': V_soma[start]}
 
-    window = 10
+    window = 30
     if len(spike_times) > 1:
         t_stop = np.min([spike_times[0] + window, spike_times[1] - 1])
     else:
@@ -157,18 +162,20 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, cell_na
 
 if __name__ == '__main__':
 
-    dl.set_rc_defaults()
-
     parser = arg.ArgumentParser(description='Record back-propagating APs in a cell apical dendrites.')
     parser.add_argument('I', type=float, action='store', help='current value in pA')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-p','--params-files', type=str, default='', help='JSON file(s) containing the parameters of the model (comma separated)')
+    parser.add_argument('-p','--params-files', type=str, default=None, help='JSON file(s) containing the parameters of the model (comma separated)')
     parser.add_argument('-m','--mech-file', type=str, default='', help='JSON file containing the mechanisms to be inserted into the cell')
     parser.add_argument('-c','--config-file', type=str, default='', help='JSON file(s) containing the configuration')
     parser.add_argument('-n','--cell-name', type=str, default='', help='cell name, if the mechanisms are stored in new style format')
-    parser.add_argument('-P','--pickle-file', type=str, default='', help='Pickle file containing the parameters of a population of individuals')
+    parser.add_argument('-P','--pickle-file', type=str, default=None, help='Pickle file containing the parameters of a population of individuals')
     parser.add_argument('-e','--evaluator-file', type=str, default='evaluator.pkl', help='Pickle file containing the evaluator')
     parser.add_argument('-o','--output', type=str, default='', help='Output file name')
+    parser.add_argument('-R','--replace-axon', type=str, default=None,
+                        help='whether to replace the axon (accepted values: "yes" or "no")')
+    parser.add_argument('-A', '--add-axon-if-missing', type=str, default=None,
+                        help='whether add an axon if the cell does not have one (accepted values: "yes" or "no")')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=100., type=float, help='stimulation duration (default: 100 ms)')
     parser.add_argument('--plot', action='store_true', help='plot the results of each integration (only if SCOOP is disabled)')
@@ -183,32 +190,33 @@ if __name__ == '__main__':
         print('You must provide the --cell-name option along with the --config-file option.')
         sys.exit(1)
 
-    if '*' in args.params_files:
-        import glob
-        params_files = glob.glob(args.params_files)
-    else:
-        params_files = args.params_files.split(',')
+    if args.params_files is not None:
+        if '*' in args.params_files:
+            import glob
+            params_files = glob.glob(args.params_files)
+        else:
+            params_files = args.params_files.split(',')
 
     if args.mech_file == '':
         if not new_config_style:
             print('You must provide the --mech-file option if no configuration file is specified.')
             sys.exit(1)
         cell_name = args.cell_name
-        mechanisms = dl.extract_mechanisms(args.config_file, cell_name)
+        mechanisms = extract_mechanisms(args.config_file, cell_name)
     else:
         cell_name = None
         mechanisms = json.load(open(args.mech_file,'r'))
 
-    if args.pickle_file == '':
+    if args.pickle_file is None:
         population = [json.load(open(params_file,'r')) for params_file in params_files]
     else:
         if len(params_files) > 1:
             print('You cannot specify multiple parameter files and one pickle file.')
             sys.exit(1)
-        population = dl.individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
+        population = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
 
     if args.output == '':
-        if args.pickle_file != '':
+        if args.pickle_file is not None:
             folder,_ = os.path.split(args.pickle_file)
         else:
             folder,_ = os.path.split(params_files[0])
@@ -219,13 +227,49 @@ if __name__ == '__main__':
         pkl_output_file = args.output
     pdf_output_file = os.path.splitext(pkl_output_file)[0] + '.pdf'
 
+    try:
+        sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
+    except:
+        sim_pars = None
+
+    if args.replace_axon == None:
+        if sim_pars is None:
+            replace_axon = False
+        else:
+            replace_axon = sim_pars['replace_axon']
+            print('Setting replace_axon = {} as per original optimization.'.format(replace_axon))
+    else:
+        if args.replace_axon.lower() in ('y','yes'):
+            replace_axon = True
+        elif args.replace_axon.lower() in ('n','no'):
+            replace_axon = False
+        else:
+            print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
+            sys.exit(3)
+
+    if args.add_axon_if_missing == None:
+        if sim_pars is None:
+            add_axon_if_missing = True
+        else:
+            add_axon_if_missing = not sim_pars['no_add_axon']
+            print('Setting add_axon_if_missing = {} as per original optimization.'.format(add_axon_if_missing))
+    else:
+        if args.add_axon_if_missing.lower() in ('y','yes'):
+            add_axon_if_missing = True
+        elif args.add_axon_if_missing.lower() in ('n','no'):
+            add_axon_if_missing = False
+        else:
+            print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
+            sys.exit(4)
+
     I = args.I
     dur = args.dur
     delay = args.delay
     swc_file = args.swc_file
     
-    worker = lambda individual: inject_current_step(I, delay, dur, swc_file, individual, \
-                                                    mechanisms, cell_name=None, neuron=None, do_plot=args.plot)
+    worker = lambda individual: inject_current_step(I, delay, dur, swc_file, individual, mechanisms, \
+                                                    replace_axon, add_axon_if_missing, cell_name=None, \
+                                                    neuron=None, do_plot=args.plot)
     
     data = list(map_fun(worker, population))
     neuron.h('forall delete_section()')
@@ -312,15 +356,16 @@ if __name__ == '__main__':
                             new_fig=False, filter=[1,3,4], tight=False)
 
         if args.with_traces:
-            t = offset[0] + (T[i] - T[i][0]) * 5
-            v = offset[1] + (VM[i]['somatic'][0,:] - VM[i]['somatic'][0,0]) * 2
-            ax1.plot(t, v, 'k', lw=1, color=[.8,0,.8])
+            scale = {'t': 3, 'v': 2}
+            t = offset[0] + (T[i] - T[i][0]) * scale['t']
+            v = offset[1] + (VM[i]['somatic'][0,:] - VM[i]['somatic'][0,0]) * scale['v']
+            ax1.plot(t, v, color=[.8,0,.8], lw=1)
             for dst in (400,600,800):
                 idx = np.where(expt['distances']['apical'] > dst)[0][0]
                 xy = expt['centers']['apical'][idx,:2]
-                t = offset[0] + xy[0] + (T[i] - T[i][0]) * 5
-                v = offset[1] + xy[1] + (VM[i]['apical'][idx,:] - VM[i]['apical'][idx,0]) * 2
-                ax1.plot(t, v, 'k', lw=1, color=[.6,.6,.6])
+                t = offset[0] + xy[0] + (T[i] - T[i][0]) * scale['t']
+                v = offset[1] + xy[1] + (VM[i]['apical'][idx,:] - VM[i]['apical'][idx,0]) * scale['v']
+                ax1.plot(t, v, color=[.6,.6,.6], lw=1)
 
         offset[0] += dx
         if (i+1) % cols == 0:
@@ -339,23 +384,30 @@ if __name__ == '__main__':
     if args.with_traces:
         x = x_lim[0] + 0.05*dx
         y = y_lim[0] + 0.5*dy
-        x_length = 50
-        y_length = 200
+        x_length = 10 * scale['t']
+        y_length = 100 * scale['v']
         ax1.plot(x+np.zeros(2), y+np.array([0,y_length]), 'k', lw=1)
-        ax1.text(x_lim[0]+0.01*dx, y+y_length/2, '{:.0f} mV'.format(y_length/2), rotation=90, \
+        ax1.text(x_lim[0]+0.01*dx, y+y_length/2, '{:.0f} mV'.format(y_length/scale['v']), rotation=90, \
                  verticalalignment='center', fontsize=8)
         ax1.plot(x+np.array([0,x_length]), y+np.zeros(2), 'k', lw=1)
-        ax1.text(x+x_length/2, y, '{:.0f} ms'.format(x_length/5), horizontalalignment='center', \
+        ax1.text(x+x_length/2, y, '{:.0f} ms'.format(x_length/scale['t']), horizontalalignment='center', \
                  verticalalignment='top', fontsize=8)
 
     ax1.set_xlim(x_lim)
     ax1.set_ylim(y_lim)
 
     ax2 = plt.axes([0.1+x_width+0.05, 0.1, 0.2, y_width])
-    data = pickle.load(open(args.pickle_file,'rb'))
-    population = data['good_population'].T
-    dl.plot_parameters_map(population, evaluator, config[cell_name], ax2, \
-                           sort_parameters=False, parameter_names_on_ticks=False)
+    if args.pickle_file is not None:
+        data = pickle.load(open(args.pickle_file,'rb'))
+        population = data['good_population'].T
+    elif len(params_files) > 0:
+        import re
+        idx = np.array([int(re.findall(r'[0-9]+', f)[0]) for f in params_files])
+        population = np.array(pickle.load(open('hall_of_fame.pkl','rb'))).T
+        population = population[:,idx]
+
+    plot_parameters_map(population, evaluator, config[cell_name], ax2, \
+                        sort_parameters=False, parameter_names_on_ticks=False)
     
     plt.savefig(pdf_output_file)
 
