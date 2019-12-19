@@ -110,12 +110,12 @@ def main():
             os.mkdir(output_folder, 0o755)
             break
 
-    for f in filenames.values():
+    for k,f in filenames.items():
         if os.path.isfile(f):
             shutil.copy(f,output_folder)
         elif os.path.isfile(args.config_dir+'/'+f):
             shutil.copy(args.config_dir+'/'+f, output_folder)
-        else:
+        elif not (args.no_mech_file and k == 'mechanisms'):
             print('%s: %s: cannot find file.' % (os.path.basename(sys.argv[0]),f))
 
     evaluator = dlopt.evaluator.create(cell_name, filenames, replace_axon=replace_axon, config_dir=args.config_dir)

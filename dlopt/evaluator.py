@@ -73,11 +73,28 @@ def define_protocols(config_dir='config',protocols_file='protocols.json'):
 
         stimuli = []
         for stimulus_definition in protocol_definition['stimuli']:
+            if not 'type' in stimulus_definition or stimulus_definition['type'] == 'somatic':
+                location = soma_loc
+            else:
+                if stimulus_definition['type'] == 'somadistance':
+                    location = ephys.locations.NrnSomaDistanceCompLocation(
+                        name=stimulus_definition['name'],
+                        soma_distance=stimulus_definition['somadistance'],
+                        seclist_name=stimulus_definition['seclist_name'])
+                    recording = ephys.recordings.CompRecording(
+                        name='%s.%s.%s' % (protocol_name, location.name, var),
+                        location=location,
+                        variable='v')
+                    recordings.append(recording)
+                else:
+                    raise Exception(
+                        'Stimulus type %s not supported' %
+                        stimulus_definition['type'])
             stimuli.append(ephys.stimuli.NrnSquarePulse(
                 step_amplitude=stimulus_definition['amp'],
                 step_delay=stimulus_definition['delay'],
                 step_duration=stimulus_definition['duration'],
-                location=soma_loc,
+                location=location,
                 total_duration=stimulus_definition['totduration']))
 
         protocols[protocol_name] = ephys.protocols.SweepProtocol(
@@ -108,8 +125,10 @@ def define_fitness_calculator(protocols, config_dir='config', features_file='fea
 
                 if location == 'soma':
                     threshold = -20
-                elif 'dend' in location:
+                elif 'dend' in location or 'apic' in location or 'basal' in location:
                     threshold = -55
+                else:
+                    raise Exception('Unknown location type `%s`' % location)
 
                 if protocol_name == 'bAP':
                     stim_end = stimulus.total_duration
