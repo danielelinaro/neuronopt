@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 
 progname = os.path.basename(sys.argv[0])
 
-EFEL_AP_threshold = -20
 
 # This is the full set of voltage features to extract for each individual cell, irrespective
 # of its type. The set of features that will be used in the optimization may be different, and
@@ -476,11 +475,11 @@ def write_features_xls():
 ############################################################
 
 
-def extract_features_from_LCG_files(files_in, kernel_file, file_out):
+def extract_features_from_LCG_files(files_in, kernel_file, file_out, AP_threshold):
     import lcg
     import aec
     import efel
-    efel.setThreshold(EFEL_AP_threshold)
+    efel.setThreshold(AP_threshold)
     Ke = np.loadtxt(kernel_file)
     traces = []
     amplitudes = []
@@ -504,16 +503,20 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out):
     pickle.dump(data,open(file_out,'wb'))
 
 
-def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate,offset=0):
+def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff=np.inf):
     import igor.binarywave as ibw
     import efel
-    efel.setThreshold(EFEL_AP_threshold)
+    efel.setThreshold(AP_threshold)
     data = ibw.load(file_in)
     voltage = data['wave']['wData']
     if len(voltage.shape) == 1:
         voltage = np.array([voltage])
     elif voltage.shape[0] > voltage.shape[1]:
         voltage = voltage.T
+    if cutoff <= sampling_rate/2:
+        from scipy.signal import butter, filtfilt
+        b,a = butter(2, cutoff/sampling_rate/2)
+        voltage = filtfilt(b, a, voltage, axis=1)
     time = np.arange(voltage.shape[1]) / sampling_rate
 
     stim_end = stim_start + stim_dur
@@ -527,12 +530,12 @@ def extract_features_from_file(file_in,stim_dur,stim_start,sampling_rate,offset=
     recording_dur = time[-1]
 
     if voltage_range[0] > -100 and voltage_range[1] < 100:
-        plt.plot(time[idx],voltage[:,idx].T+offset,'k',lw=1)
+        plt.plot(time[idx],voltage[:,idx].T,'k',lw=1)
 
     return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
 
 
-def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,sampling_rate=20,files_out=[],quiet=False):
+def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_start, AP_threshold, sampling_rate=20, cutoff=np.inf, files_out=[], quiet=False):
     if type(files_out) != list:
         files_out = [files_out]
     if len(files_out) == 1:
@@ -542,7 +545,7 @@ def extract_features_from_files(files_in,current_amplitudes,stim_dur,stim_start,
         offset = 0
         for i,f in enumerate(files_in):
             print('I = %g nA.' % current_amplitudes[i])
-            feat,voltage_range,_ = extract_features_from_file(f,stim_dur,stim_start,sampling_rate)
+            feat,voltage_range,_ = extract_features_from_file(f, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff)
             if 'Spikecount' in feat[0]:
                 # Spikecount feature is present
                 with_spikes = [fe['Spikecount'][0] > 0 for fe in feat]
@@ -666,6 +669,8 @@ def extract_features():
                         help='the file where data is stored')
     parser.add_argument('-F', '--sampling-rate', default=20., type=float,
                         help='the sampling rate at which data was recorded (default 20 kHz)')
+    parser.add_argument('--cutoff', default=np.inf, type=float,
+                        help='cutoff frequency for data filtering (default +inf)')
     parser.add_argument('--history-file', default='DP_Sweeper/history.ibw', type=str,
                         help='history file (default: DP_Sweeper/history.ibw)')
     parser.add_argument('--stim-dur', default=500., type=float,
@@ -773,11 +778,13 @@ def extract_features():
         files_in = [filename]
         file_out = os.path.basename(filename).split('.')[0] + '.pkl'
         data = ibw.load(filename)
-        nsteps = data['wave']['wData'].shape[1]
+        nsamples,nsteps = data['wave']['wData'].shape
+        t = np.arange(nsamples) / args.sampling_rate
+        idx, = np.where((t > args.stim_start) & (t < np.min([args.stim_start+100,args.stim_start+args.stim_dur])))
         if args.Ipulse is None:
             Istep = args.Istep
             if args.Imin is None:
-                s = np.std(data['wave']['wData'],0)
+                s = np.std(data['wave']['wData'][idx,:], 0)
                 Imin = -args.Istep*np.argmin(s)
                 print('Guessing the minimum value of injected current: %g nA.' % Imin)
             else:
@@ -797,13 +804,12 @@ def extract_features():
             else:
                 kernel_file = file.split('.h5')[0] + '_kernel.dat'
 
-    EFEL_AP_threshold = args.spike_threshold
-
     if mode == 'LCG':
-        extract_features_from_LCG_files(files_in, kernel_file, folder+'/'+file_out)
+        extract_features_from_LCG_files(files_in, kernel_file, folder+'/'+file_out, args.spike_threshold)
     else:
-        extract_features_from_files(files_in,current_amplitudes,args.stim_dur,args.stim_start,
-                                    args.sampling_rate,files_out=[folder+'/'+file_out],quiet=args.quiet)
+        extract_features_from_files(files_in, current_amplitudes, args.stim_dur, args.stim_start,
+                                    args.spike_threshold, args.sampling_rate, args.cutoff,
+                                    files_out=[folder+'/'+file_out], quiet=args.quiet)
 
     plt.xlabel('Time (ms)')
     plt.ylabel('Voltage (mV)')

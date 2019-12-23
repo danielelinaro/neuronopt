@@ -29,7 +29,7 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
     stim.delay = delay
     stim.dur = dur
     stim.amp = I*1e-3
-    
+
     recorders = {'spike_times': h.Vector()}
     apc = h.APCount(cell.morpho.soma[0](0.5))
     apc.thresh = -20.
@@ -39,27 +39,39 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
     CA3_mech_vars = {'kca': 'gk', 'kap': 'gka', 'cat': 'gcat', 'cal': 'gcal', 'can': 'gcan', \
                      'cagk': 'gkca', 'kad': 'gka'}
 
-    for lbl in 't','soma.v','soma.cai','soma.ica','axon.v','apic.v','basal.v':
+    for lbl in 't','soma.v','soma.cai','soma.ica','axon.v':
         recorders[lbl] = h.Vector()
     recorders['t'].record(h._ref_t)
     recorders['soma.v'].record(cell.morpho.soma[0](0.5)._ref_v)
     recorders['soma.cai'].record(cell.morpho.soma[0](0.5)._ref_cai)
     recorders['soma.ica'].record(cell.morpho.soma[0](0.5)._ref_ica)
 
+    apical_dst = {'apic1': 300, 'apic2': 700}
+    basal_dst = {'basal1': 100, 'basal2': 200}
     if cell.n_axonal_sections > 0:
         recorders['axon.v'].record(cell.morpho.axon[0](0.5)._ref_v)
     else:
         print('The cell has no axon.')
     if cell.n_apical_sections > 0:
-        for sec,dst in zip(cell.morpho.apic,cell.apical_path_lengths):
-            if dst[0] >= 200:
-                recorders['apic.v'].record(sec(0.5)._ref_v)
-                break
+        h.distance(0, 0.5, sec=cell.morpho.soma[0])
+        for sec in cell.morpho.apic:
+            for seg in sec:
+                for k,v in apical_dst.items():
+                    if not k+'.v' in recorders and h.distance(1, seg.x, sec=sec) >= v:
+                        recorders[k+'.v'] = h.Vector()
+                        recorders[k+'.v'].record(seg._ref_v)
+                        print('Adding recorder on the apical dendrite at a distance of {:.2f} um.'\
+                              .format(h.distance(1, seg.x, sec=sec)))
     if cell.n_basal_sections > 0:
-        for sec,dst in zip(cell.morpho.dend,cell.basal_path_lengths):
-            if dst[0] >= 100:
-                recorders['basal.v'].record(sec(0.5)._ref_v)
-                break
+        h.distance(0, 0.5, sec=cell.morpho.soma[0])
+        for sec in cell.morpho.basal:
+            for seg in sec:
+                for k,v in basal_dst.items():
+                    if not k+'.v' in recorders and h.distance(1, seg.x, sec=sec) >= v:
+                        recorders[k+'.v'] = h.Vector()
+                        recorders[k+'.v'].record(seg._ref_v)
+                        print('Adding recorder on the basal dendrite at a distance of {:.2f} um.'\
+                              .format(h.distance(1, seg.x, sec=sec)))
 
     gbars = {}
     for mech in cell.morpho.soma[0](0.5):
@@ -85,7 +97,7 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
         pass
 
     h.cvode_active(1)
-    h.tstop = stim.dur + stim.delay + 100
+    h.tstop = dur + delay + 100
 
     fmt = lambda now: '%02d:%02d:%02d' % (now.tm_hour,now.tm_min,now.tm_sec)
 
@@ -102,11 +114,17 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
             len(recorders['spike_times'])/dur*1e3,stop-start))
 
     if do_plot:
+        apical_col = 'rm'
+        basal_col = 'gc'
         fig,ax = plt.subplots(3, 1, sharex=True, figsize=(6,4))
         t = np.array(recorders['t'])
+        for i,(k,v) in enumerate(apical_dst.items()):
+            if k+'.v' in recorders:
+                ax[0].plot(t,recorders[k+'.v'],apical_col[i],label='Apical - {:.0f} um'.format(v))
+        for i,(k,v) in enumerate(basal_dst.items()):
+            if k+'.v' in recorders:
+                ax[0].plot(t,recorders[k+'.v'],basal_col[i],label='Basal - {:.0f} um'.format(v))
         ax[0].plot(t,recorders['soma.v'],'k',label='Soma')
-        ax[0].plot(t,recorders['apic.v'],'r',label='Apical')
-        ax[0].plot(t,recorders['basal.v'],'g',label='Basal')
         ax[0].set_ylabel(r'$V_m$ (mV)')
         ax[0].legend(loc='best')
         ax[1].plot(t,np.array(recorders['soma.cai'])*1e3,'k')
@@ -114,14 +132,15 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
         ax[2].plot(t,np.array(recorders['soma.ica'])*1e6,'k')
         ax[2].set_ylabel(r'$I_{Ca}$ (pA)')
         ax[2].set_xlabel('Time (ms)')
-        ax[2].set_xlim([stim.delay - 50, stim.delay + stim.dur + 100])
+        ax[2].set_xlim([delay - 50, delay + dur + 100])
+        plt.savefig('step.pdf')
         if len(gbars) > 0:
             fig,ax = plt.subplots(1, 1, figsize=(6,4))
             for name,rec in recorders.items():
                 if 'soma' in name and not name.split('.')[1] in ('v','cai','ica'):
                     ax.plot(recorders['t'], np.array(rec)/gbars[name], label=name)
             ax.legend(loc='best')
-            ax.set_xlim([stim.delay - 50, stim.delay + stim.dur + 100])
+            ax.set_xlim([delay - 50, delay + dur + 100])
             ## phase-space plot: to be perfected...
             #fig,ax = plt.subplots(1, 1, figsize=(6,4))
             #idx, = np.where(t > 1000)
