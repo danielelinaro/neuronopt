@@ -105,6 +105,13 @@ def load_fI_data(folder_list, n_stds):
 
 
 def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sort_parameters=True, parameter_names_on_ticks=True, sort_idx=None):
+    def convert_param_names(param_names):
+        np = len(param_names)
+        suffix = {'somatic': 's', 'axonal': 'a', 'allnoaxon': 's,d', 'apical': 'ap', 'basal': 'b', 'alldend': 'd'}
+        for i in range(np):
+            name,loc = param_names[i].split('.')
+            param_names[i] = name + '.' + suffix[loc]
+
     n_parameters,n_individuals = population.shape
 
     bounds = {}
@@ -161,10 +168,12 @@ def plot_parameters_map(population, evaluator, config, ax=None, groups=None, sor
     ax.set_yticks(np.arange(n_parameters))
     if parameter_names_on_ticks:
         if sort_parameters:
+            convert_param_names(param_names_sorted_by_mean)
             ax.set_yticklabels(param_names_sorted_by_mean, fontsize=6)
         else:
             param_names = [name if not 'bar' in name else name.split('bar_')[1] \
                            for name in evaluator.param_names]
+            convert_param_names(param_names)
             ax.set_yticklabels(param_names, fontsize=6)
         for i in range(n_parameters):
             if s[i] < 0.2:
