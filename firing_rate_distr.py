@@ -40,6 +40,10 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output', type=str, default='firing_rates.pkl', help='Output file name')
     parser.add_argument('-s','--swap', type=str, default='', help='parameters to swap')
     parser.add_argument('-A','--save-all', action='store_true', help='save also voltage traces')
+    parser.add_argument('-R','--replace-axon', type=str, default='no',
+                        help='whether to replace the axon (accepted values: "yes" or "no", default "no")')
+    parser.add_argument('-A', '--add-axon-if-missing', type=str, default='no',
+                        help='whether add an axon if the cell does not have one (accepted values: "yes" or "no", default "no")')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=1000., type=float, help='stimulation duration (default: 1000 ms)')
     parser.add_argument('--tran', default=0., type=float, help='transient to be discard after stimulation onset (default: 0 ms)')
@@ -56,6 +60,22 @@ if __name__ == '__main__':
         else:
             print('Unknown current definition: %s.' % args.I)
             sys.exit(1)
+
+    if args.replace_axon.lower() in ('y','yes'):
+        replace_axon = True
+    elif args.replace_axon.lower() in ('n','no'):
+        replace_axon = False
+    else:
+        print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
+        sys.exit(2)
+
+    if args.add_axon_if_missing.lower() in ('y','yes'):
+        add_axon_if_missing = True
+    elif args.add_axon_if_missing.lower() in ('n','no'):
+        add_axon_if_missing = False
+    else:
+        print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
+        sys.exit(3)
 
     cell_name = args.cell_name
     condition = args.condition
@@ -96,7 +116,8 @@ if __name__ == '__main__':
     delay = args.delay
     tran = args.tran
 
-    worker = lambda individual: inject_current_step(I, delay, dur, args.swc_file, individual, mechanisms,
+    worker = lambda individual: inject_current_step(I, delay, dur, args.swc_file, individual, \
+                                                    mechanisms, replace_axon, add_axon_if_missing, \
                                                     cell_name=None, neuron=neuron, do_plot=False, verbose=False)
     runs = list(map_fun(worker, population))
     neuron.h('forall delete_section()')
