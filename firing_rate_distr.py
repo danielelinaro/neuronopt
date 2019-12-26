@@ -7,7 +7,7 @@ import argparse as arg
 import numpy as np
 import matplotlib.pyplot as plt
 from random import randint
-import dlutils as dl
+from dlutils.utils import extract_mechanisms, build_parameters_dict
 
 import neuron
 from current_step import inject_current_step
@@ -39,7 +39,7 @@ if __name__ == '__main__':
                         help='Pickle file containing the parameters of a population of individuals')
     parser.add_argument('-o','--output', type=str, default='firing_rates.pkl', help='Output file name')
     parser.add_argument('-s','--swap', type=str, default='', help='parameters to swap')
-    parser.add_argument('-A','--save-all', action='store_true', help='save also voltage traces')
+    parser.add_argument('-a','--save-all', action='store_true', help='save also voltage traces')
     parser.add_argument('-R','--replace-axon', type=str, default='no',
                         help='whether to replace the axon (accepted values: "yes" or "no", default "no")')
     parser.add_argument('-A', '--add-axon-if-missing', type=str, default='no',
@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     cell_name = args.cell_name
     condition = args.condition
-    mechanisms = dl.extract_mechanisms(args.config_file, cell_name)
+    mechanisms = extract_mechanisms(args.config_file, cell_name)
 
     config = json.load(open(args.config_file,'r'))[cell_name]
     data = pickle.load(open(args.pickle_file,'rb'))
@@ -110,7 +110,7 @@ if __name__ == '__main__':
             other_avg = np.mean(other_params[:,idx])
             params[:,idx] *= (other_avg / avg)
             print('Using values from cell {} for parameter {} (index {}).'.format(other_cell_name, mech_name, idx))
-    population = dl.build_parameters_dict(params, evaluator, config, None)
+    population = build_parameters_dict(params, evaluator, config, None)
 
     dur = args.dur
     delay = args.delay
