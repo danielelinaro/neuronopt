@@ -39,7 +39,6 @@ def load_files():
 
 def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0,dump=False,verbose=True):
     import efel
-    efel.setThreshold(-20)
     pop_size = len(final_pop)
     n_params = len(evaluator.param_names)
 
@@ -72,6 +71,15 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
             trace = {'T': responses[individual]['{}.{}.v'.format(proto,site)]['time'],
                      'V': responses[individual]['{}.{}.v'.format(proto,site)]['voltage'],
                      'stim_start': [stim_start], 'stim_end': [stim_end]}
+            thresh = None
+            for obj in evaluator.fitness_calculator.objectives:
+                if proto + '.' + site in obj.features[0].name:
+                    thresh = obj.features[0].threshold
+                    break
+            if thresh is None:
+                raise Exception('Cannot find the threshold value for protocol {} and site {}'.format(proto, site))
+            print('Setting threshold for protocol {} and site {} to {} mV.'.format(proto, site, thresh))
+            efel.setThreshold(thresh)
             feature_values = efel.getFeatureValues([trace],feature_names)[0]
             features[proto][site] = {k: [np.mean(v),np.std(v)] if v is not None else [None,None] \
                                      for k,v in feature_values.items()}

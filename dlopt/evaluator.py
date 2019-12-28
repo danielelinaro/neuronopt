@@ -126,7 +126,7 @@ def define_fitness_calculator(protocols, config_dir='config', features_file='fea
                 if location == 'soma':
                     threshold = -20
                 elif 'dend' in location or 'apic' in location or 'basal' in location:
-                    threshold = -55
+                    threshold = -45
                 else:
                     raise Exception('Unknown location type `%s`' % location)
 

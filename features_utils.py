@@ -302,6 +302,9 @@ def write_features():
 
 
 def read_sheet(book, stimulus_name, recording_site):
+
+    RED = 0xFF0000
+
     if stimulus_name in book:
         sheet_name = stimulus_name
     elif (stimulus_name + '_' + recording_site) in book:
@@ -327,6 +330,11 @@ def read_sheet(book, stimulus_name, recording_site):
         if rows[0][0].value is None:
             break
         feature_name = rows[0][0].value
+        feature_col = int(rows[0][0].fill.start_color.index[2:], 16)
+        if feature_col == RED:
+            print('Discarding feature {} in sheet {} because the cell fill is {}' \
+                  .format('\033[91m'+feature_name+'\033[0m', sheet_name, '\033[91mred\033[0m'))
+            continue
         feature_mean = float(rows[1][0].value)
         feature_std = float(rows[2][0].value)
         if not np.isnan(feature_mean):
@@ -432,8 +440,19 @@ def write_features_xls():
     import openpyxl
     book = openpyxl.load_workbook(xls_file)
 
-    features = {}
-    protocols = {}
+    # make sure that items are dumped to the json files in the order in
+    # which they were inserted in the dictionary
+    from collections import OrderedDict
+    features = OrderedDict()
+    protocols = OrderedDict()
+
+    if with_bap:
+        protocols['bAP'] = {'stimuli': [
+            {'delay': bap_delay, 'amp': bap_amplitude, 'duration': bap_dur, \
+             'totduration': bap_delay+bap_dur+100}
+        ]}
+        protocols['bAP']['extra_recordings'] = extra_recordings['bAP']['extra_recordings']
+        features['bAP'] = {site: read_sheet(book, 'bAP', site) for site in recording_sites}
 
     for i in range(n_steps):
         step = 'Step{}'.format(i+1)
@@ -449,13 +468,6 @@ def write_features_xls():
                 print('{} does not contain a sheet named {} or {}.'.format(xls_file, step, step+'_'+recording_site))
                 continue
             features[step][recording_site] = feat
-    if with_bap:
-        protocols['bAP'] = {'stimuli': [
-            {'delay': bap_delay, 'amp': bap_amplitude, 'duration': bap_dur, \
-             'totduration': bap_delay+bap_dur+100}
-        ]}
-        protocols['bAP']['extra_recordings'] = extra_recordings['bAP']['extra_recordings']
-        features['bAP'] = {site: read_sheet(book, 'bAP', site) for site in recording_sites}
 
     if args.suffix != '':
         if args.suffix[0] in ('-','_'):
@@ -843,12 +855,14 @@ def diff_features():
     for step_num in features[0].keys():
         printed_header = False
         if step_num in features[1].keys():
+            if not recording_site in features[0][step_num] or not recording_site in features[1][step_num]:
+                continue
             for feature_name in features[0][step_num][recording_site].keys():
                 if feature_name in features[1][step_num][recording_site].keys():
                     feature_values = np.array([feat[step_num][recording_site][feature_name] for feat in features])
                     if np.any(np.abs(np.diff(feature_values,axis=0)) > 1e-6):
                         if not printed_header:
-                            print('%s:' % step_num)
+                            print('%s.%s:' % (step_num,recording_site))
                             printed_header = True
                         print('\t%s: %s [%g,%g (%.0f%%)] %s [%g,%g (%.0f%%)]' % (feature_name,arrow[0],
                                                                                  feature_values[0,0],feature_values[0,1],
@@ -863,9 +877,13 @@ def diff_features():
             if not step_num in features[other].keys():
                 print('%s %s' % (arrow[this],step_num))
             else:
+                if not recording_site in features[this][step_num]:
+                    continue
                 for feature_name in features[this][step_num][recording_site].keys():
-                    if not feature_name in features[other][step_num][recording_site].keys():
-                        print('%s %s:%s' % (arrow[this],step_num,feature_name))
+                    if not recording_site in features[other][step_num]:
+                        print('%s %s.%s:%s' % (arrow[this],step_num,recording_site,feature_name))
+                    elif not feature_name in features[other][step_num][recording_site].keys():
+                        print('%s %s.%s:%s' % (arrow[this],step_num,recording_site,feature_name))
 
 
 ############################################################
