@@ -74,7 +74,9 @@
     "distributions": {
         "exp": "(-0.8696 + 2.087*math.exp(({distance})*0.0031))*{value}",
         "linear_gNaTs2_apic": "({value}*(1-{distance}/1250))",
-        "linear_e_pas_apic": "({value}+{distance}/50)"
+        "linear_e_pas_apic": "({value}+{distance}/50)",
+	"hotspot_Ca_HVA_apic": "{value}*(1+9*(1/(1+math.exp(-{distance}+650.))-1/(1+math.exp(-{distance}+850.))))",
+	"hotspot_Ca_LVAst_apic": "{value}*(1+99*(1/(1+math.exp(-{distance}+650.))-1/(1+math.exp(-{distance}+850.))))"
     }, 
     "fixed": {
         "global":   [["v_init", -65], ["celsius", 34]], 
@@ -123,7 +125,9 @@
             ["gSKv3_1bar_SKv3_1", 0, 0.04, "uniform"],
             ["gImbar_Im", 0, 0.001, "uniform"],
             ["gIhbar_Ih", 7.999e-05, 8.001e-05, "exp"],
-            ["e_pas", -90, -55, "linear_e_pas_apic" ]
+            ["e_pas", -90, -55, "linear_e_pas_apic" ],
+            ["gCa_HVAbar_Ca_HVA", 0, 0.001, "hotspot_Ca_HVA_apic"],
+            ["gCa_LVAstbar_Ca_LVAst", 0, 0.01, "hotspot_Ca_LVAst_apic"]
         ]
     }
 }

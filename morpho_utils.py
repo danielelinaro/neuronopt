@@ -471,6 +471,140 @@ def clean():
 
 
 ############################################################
+###                      ANALYSE                         ###
+############################################################
+
+
+def analyse():
+    import btmorph
+
+    def find_bifurcation(node):
+        if len(node.children) == 1:
+            return find_bifurcation(node.children[0])
+        return node
+
+    def find_leaves(node):
+        tree = btmorph.STree2()
+        tree.set_root(node)
+        leaves = []
+        for node in tree:
+            if len(node.children) == 0:
+                leaves.append(node)
+        return leaves
+
+    def find_major_bifurcation(node, min_y_coord):
+        while True:
+            bif = find_bifurcation(node)
+            if len(bif.children) == 0:
+                # there are no major bifurcations on the tree originating from this  node
+                return None
+            max_y_coords = []
+            for child in bif.children:
+                terminals = find_leaves(child)
+                y_coords = [node.content['p3d'].xyz[1] for node in terminals]
+                max_y_coords.append(np.max(y_coords))
+                #print(max_y_coords[-1])
+            #print('-----')
+            max_y_coords = np.array(max_y_coords)
+            if np.all(max_y_coords > min_y_coord):
+                break
+            idx, = np.where(max_y_coords > min_y_coord)
+            if len(idx) > 1:
+                print('There is more than one branch that reaches past 900 um.')
+                import ipdb
+                ipdb.set_trace()
+            node = bif.children[idx[0]]
+        return bif
+
+    dst = lambda x,y: np.sqrt(np.sum((x-y)**2))
+
+    parser = arg.ArgumentParser(description='Analyse a morphology',
+                                prog=progname+' analyse')
+    parser.add_argument('swc_file', type=str, action='store', help='SWC file')
+    parser.add_argument('-c', '--min-y-coord', default=900, type=float, \
+                        help='minimum y coordinate of a branch to be considered a main one (default 900 um)')
+    args = parser.parse_args(args=sys.argv[2:])
+
+    swc_file = args.swc_file
+    if not os.path.isfile(swc_file):
+        print('%s: %s: no such file.' % (progname,swc_file))
+        sys.exit(1)
+
+    morpho = np.loadtxt(swc_file)
+    xyz = morpho[:,2:5]
+    x_lim = np.array([np.min(xyz[:,0]), np.max(xyz[:,0])])
+    y_lim = np.array([np.min(xyz[:,1]), np.max(xyz[:,1])])
+
+    min_y_coord = args.min_y_coord
+    if min_y_coord > y_lim[1]:
+        print('Maximum y coordinate of cell {} is smaller than {} um.'.format(swc_file, min_y_coord))
+        sys.exit(2)
+
+    tree = btmorph.STree2()
+    tree.read_SWC_tree_from_file(swc_file)
+
+    root_coord = tree.root.content['p3d'].xyz
+
+    APICAL_TYPE = 4
+    apical_root = None
+    for child in tree.root.children:
+        if child.content['p3d'].type == APICAL_TYPE:
+            apical_root = child
+            xyz = child.content['p3d'].xyz
+            print('Found first apical point @ ({:.2f},{:.2f},{:.2f}) um.'.format(xyz[0], xyz[1], xyz[2]))
+            break
+    if apical_root is None:
+        print('No apical dendrite connected to the soma: searching the whole tree...')
+        for node in tree:
+            if node.content['p3d'].type == APICAL_TYPE:
+                apical_root = node
+                xyz = node.content['p3d'].xyz
+                print('Found first apical point @ ({:.2f},{:.2f},{:.2f}) um.'.format(xyz[0], xyz[1], xyz[2]))
+                break
+    if apical_root is None:
+        print('The morphology {} does not contain an apical dendrite (SWC type {}).'.format(swc_file, APICAL_TYPE))
+        sys.exit(0)
+
+    first_apic_bif = find_major_bifurcation(apical_root, min_y_coord)
+    if first_apic_bif is None:
+        print('There is no bifurcation on the main apical dendrite of morphology {}.'.format(swc_file))
+        sys.exit(0)
+    first_apic_bif_coord = first_apic_bif.content['p3d'].xyz
+    first_apic_bif_dst = dst(root_coord, first_apic_bif_coord)
+    print('The first bifurcation on the main apical dendrite is located @ ({:.2f},{:.2f},{:.2f}) um.'\
+          .format(first_apic_bif_coord[0], first_apic_bif_coord[1], first_apic_bif_coord[2]))
+
+    bifurcations = [find_major_bifurcation(child, min_y_coord) for child in first_apic_bif.children]
+    second_apic_bif = []
+    for bif,s in zip(bifurcations, ['first','second']):
+        if bif is None:
+            print('There is no main bifurcation on the {} secondary apical dendrite of morphology {}'.format(s,swc_file))
+        else:
+            second_apic_bif.append(bif)
+            print('The first bifurcation on the {} secondary apical dendrite is located @ ({:.2f},{:.2f},{:.2f}) um.'\
+                  .format(s, bif.content['p3d'].xyz[0], bif.content['p3d'].xyz[1], bif.content['p3d'].xyz[2]))
+    second_apic_bif_coord = [node.content['p3d'].xyz for node in second_apic_bif]
+    second_apic_bif_dst = [dst(root_coord, coord) for coord in second_apic_bif_coord]
+
+    idx = np.argmin(second_apic_bif_dst)
+
+    print('The main bifurcation is located at a distance of {:.1f} um.'.format(first_apic_bif_dst))
+    print('The primary tuft ends at a distance of {:.1f} um.'.format(second_apic_bif_dst[idx]))
+
+    import neurom.viewer
+    import matplotlib.pyplot as plt
+    neurom.viewer.draw(neurom.load_neuron(swc_file))
+    x = np.linspace( -np.min([np.abs(x_lim[0]), first_apic_bif_dst]),
+                     np.min([x_lim[1], first_apic_bif_dst]), 100)
+    y = np.sqrt(first_apic_bif_dst**2 - x**2)
+    plt.plot(x, y, 'r--')
+    x = np.linspace( -np.min([np.abs(x_lim[0]), second_apic_bif_dst[idx]]),
+                     np.min([x_lim[1], second_apic_bif_dst[idx]]), 100)
+    y = np.sqrt(second_apic_bif_dst[idx]**2 - x**2)
+    plt.plot(x, y, 'r--')
+    plt.show()
+
+############################################################
 ###                         HELP                         ###
 ############################################################
 
@@ -500,7 +634,7 @@ def help():
 
 
 # all the commands currently implemented
-commands = {'help': help, 'convert': convert, 'build': build, 'plot': plot, 'simplify': simplify, 'clean': clean}
+commands = {'help': help, 'convert': convert, 'build': build, 'plot': plot, 'simplify': simplify, 'clean': clean, 'analyse': analyse}
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):
