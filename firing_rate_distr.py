@@ -10,7 +10,7 @@ from random import randint
 from dlutils.utils import extract_mechanisms, build_parameters_dict
 
 import neuron
-from current_step import inject_current_step
+from current_injection import inject_current_step
 
 use_scoop = True
 if use_scoop:

@@ -11,7 +11,7 @@ import dlutils.utils as dlu
 import dlutils.graphics as dlg
 
 import neuron
-from current_step import inject_current_step
+from current_injection import inject_current_step
 
 use_scoop = True
 if use_scoop:
