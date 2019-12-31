@@ -37,7 +37,7 @@ def load_files():
     return parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses
 
 
-def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,individual=0,dump=False,verbose=True):
+def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses, individual=0, dump=False, verbose=False):
     import efel
     pop_size = len(final_pop)
     n_params = len(evaluator.param_names)
@@ -60,6 +60,7 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
     all_feature_names = []
     proto_names = target_features.keys()
     site_names = []
+    fid = open('individual_{}.log'.format(individual), 'w')
     for proto,target_feature in target_features.items():
         site_names.extend(list(target_feature.keys()))
         features[proto] = {}
@@ -85,20 +86,29 @@ def plot_summary(target_features,hall_of_fame,final_pop,evaluator,responses,indi
                                      for k,v in feature_values.items()}
             features_std_units[proto][site] = {k: np.abs(target_feature[site][k][0]-np.mean(v)) / target_feature[site][k][1] \
                                                if v is not None else None for k,v in feature_values.items()}
+            fid.write('{}.{}:\n'.format(proto,site))
             if verbose:
                 print('{}.{}:'.format(proto,site))
             for name,values in target_feature[site].items():
                 if not name in all_feature_names:
                     all_feature_names.append(name)
-                if verbose:
-                    if features[proto][site][name][0] is None:
+                if features[proto][site][name][0] is None:
+                    fid.write('\t%s: model: None. data: %g +- %g (std/mean: %g)\n' %
+                              (name,values[0],values[1],values[1]/np.abs(values[0])))
+                    if verbose:
                         print('\t%s: model: None. data: %g +- %g (std/mean: %g)' %
                               (name,values[0],values[1],values[1]/np.abs(values[0])))
-                    else:
+                else:
+                    fid.write('\t%s: model: %g (%g std from data mean). data: %g +- %g (std/mean: %g)\n' %
+                              (name,features[proto][site][name][0],features_std_units[proto][site][name],
+                               values[0],values[1],values[1]/np.abs(values[0])))
+                    if verbose:
                         print('\t%s: model: %g (%g std from data mean). data: %g +- %g (std/mean: %g)' %
                               (name,features[proto][site][name][0],features_std_units[proto][site][name],
                                values[0],values[1],values[1]/np.abs(values[0])))
 
+    fid.close()
+                              
     site_names = list(set(site_names))
     site_names = sorted(site_names, key = lambda s: 'a' if s == 'soma' else s, reverse = True)
     n_proto = len(proto_names)
@@ -249,7 +259,7 @@ def main():
     parser.add_argument('individuals', type=int, action='store', nargs='*', default=[0], help='individuals to plot')
     parser.add_argument('-a', '--all', action='store_true', help='plot all individuals')
     parser.add_argument('-d', '--dump', action='store_true', help='dump traces and error values')
-    parser.add_argument('-q', '--quiet', action='store_true', help='be quiet')
+    parser.add_argument('-v', '--verbose', action='store_true', help='be verbose')
     args = parser.parse_args(args=sys.argv[1:])
 
     parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses = load_files()
@@ -270,7 +280,7 @@ def main():
         individuals = args.individuals
 
     for ind in individuals:
-        plot_summary(features,hall_of_fame,final_pop,evaluator,responses,ind,args.dump,not args.quiet)
+        plot_summary(features,hall_of_fame,final_pop,evaluator,responses,ind,args.dump,args.verbose)
     
 
 if __name__ == '__main__':
