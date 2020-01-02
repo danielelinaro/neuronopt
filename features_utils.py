@@ -41,7 +41,10 @@ feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                              'doublet_ISI','AHP_depth_abs_slow',
                              'AP_width','time_to_first_spike','AHP_depth_abs',
                              'adaptation_index2','mean_frequency','Spikecount',
-                             'voltage_base','voltage_deflection'],
+                             'voltage_base','voltage_deflection',
+                             'AP_amplitude_from_voltagebase','inv_first_ISI',
+                             'inv_second_ISI','inv_third_ISI','inv_fourth_ISI',
+                             'inv_fifth_ISI'],
                  'BBP_CTX_bAP': ['AP_height', 'AP_width', 'Spikecount',
                                  'voltage_base', 'AP_amplitude_from_voltagebase'],
                  'BBP_HPC': ['voltage_base', 'steady_state_voltage',
@@ -932,8 +935,31 @@ def dump_features():
         if len(feature_names) == 0:
             continue
         feature_names = list(set( chain(*feature_names) ))
+        for i in range(len(feature_names)):
+            if feature_names[i] == 'inv_first_ISI':
+                feature_names[i] = 'inv_1_ISI'
+            elif feature_names[i] == 'inv_second_ISI':
+                feature_names[i] = 'inv_2_ISI'
+            elif feature_names[i] == 'inv_third_ISI':
+                feature_names[i] = 'inv_3_ISI'
+            elif feature_names[i] == 'inv_fourth_ISI':
+                feature_names[i] = 'inv_4_ISI'
+            elif feature_names[i] == 'inv_fifth_ISI':
+                feature_names[i] = 'inv_5_ISI'
         feature_names.sort()
-        for name in feature_names:
+        for feature_name in feature_names:
+            if feature_name == 'inv_1_ISI':
+                name = 'inv_first_ISI'
+            elif feature_name == 'inv_2_ISI':
+                name = 'inv_second_ISI'
+            elif feature_name == 'inv_3_ISI':
+                name = 'inv_third_ISI'
+            elif feature_name == 'inv_4_ISI':
+                name = 'inv_fourth_ISI'
+            elif feature_name == 'inv_5_ISI':
+                name = 'inv_fifth_ISI'
+            else:
+                name = feature_name
             fid.write('%s,' % name)
             for feat in features:
                 try:
