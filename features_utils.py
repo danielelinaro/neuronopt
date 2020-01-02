@@ -369,9 +369,12 @@ def write_features_xls():
     parser.add_argument('-o', '--suffix', default='',
                         help='suffix for the output file names (default: no suffix)')
     parser.add_argument('--recording-sites', default='soma', help='recording sites (default: "soma")')
+    parser.add_argument('--injection-site', default='somatic', type=str, help='injection site (default: "soma")')
+    parser.add_argument('--injection-distance', default=0, type=int, help='distance of the injection site (default: 0)')
     parser.add_argument('--stim-start', default=1000, type=float, help='delay before application of the stimulus')
     parser.add_argument('--stim-dur', required=True, type=float, help='duration of the stimulus')
     parser.add_argument('--after', default=500, type=float, help='time after the application of the stimulus')
+    parser.add_argument('--step-start', default=1, type=int, help='first value for step name (default: 1)')
     parser.add_argument('--with-bap', action='store_true', help='add b-AP stimulus')
     parser.add_argument('--bap-amplitude', default=None, type=float, \
                         help='b-AP stimulus amplitude (default: {} pA)'.format(bap_amplitude))
@@ -414,6 +417,16 @@ def write_features_xls():
             print('{}: file `extra_recordings.json` is required when more than one recording site are present.'.format(progname))
             sys.exit(5)
 
+    injection_site = args.injection_site
+    if not injection_site in ('somatic','apical','basal','axonal'):
+        print('Injection site must be one of "somatic", "apical", "basal" or "axonal".')
+        sys.exit(6)
+
+    injection_site_distance = args.injection_distance
+    if injection_site_distance < 0:
+        print('The distance of the injection site from the soma must be >= 0.')
+        sys.exit(7)
+
     if args.with_bap:
         with_bap = True
     elif args.bap_amplitude is not None or args.bap_dur is not None or args.bap_delay is not None:
@@ -423,7 +436,7 @@ def write_features_xls():
 
     if with_bap and n_recording_sites == 1:
         print('{}: cannot have b-AP stimulus with just one recording site.'.format(progname))
-        sys.exit(6)
+        sys.exit(8)
 
     if args.bap_amplitude is not None:
         bap_amplitude = args.bap_amplitude
@@ -434,11 +447,11 @@ def write_features_xls():
 
     if bap_amplitude > 50:
         print('{}: pulse amplitude for b-AP protocol is > 50 nA: are you sure that is correct?')
-        sys.exit(7)
+        sys.exit(9)
 
     if bap_dur < 0.2:
         print('{}: pulse duration for b-AP protocol is < 0.2 ms: are you sure that is correct?')
-        sys.exit(8)
+        sys.exit(10)
 
     import openpyxl
     book = openpyxl.load_workbook(xls_file)
@@ -452,16 +465,23 @@ def write_features_xls():
     if with_bap:
         protocols['bAP'] = {'stimuli': [
             {'delay': bap_delay, 'amp': bap_amplitude, 'duration': bap_dur, \
-             'totduration': bap_delay+bap_dur+100}
+             'totduration': bap_delay+bap_dur+100, 'type': 'somatic'}
         ]}
         protocols['bAP']['extra_recordings'] = extra_recordings['bAP']['extra_recordings']
         features['bAP'] = {site: read_sheet(book, 'bAP', site) for site in recording_sites}
 
     for i in range(n_steps):
-        step = 'Step{}'.format(i+1)
+        step = 'Step{}'.format(i + args.step_start)
         protocols[step] = {'stimuli': [
             {'delay': delay, 'amp': amplitudes[i], 'duration': dur, 'totduration': delay+dur+after}
         ]}
+        if args.injection_site in ('basal','apical','axonal'):
+            protocols[step]['stimuli'][0]['type'] = 'somadistance'
+            protocols[step]['stimuli'][0]['name'] = injection_site + '1'
+            protocols[step]['stimuli'][0]['seclist_name'] = injection_site
+            protocols[step]['stimuli'][0]['somadistance'] = injection_site_distance
+        else:
+            protocols[step]['stimuli'][0]['type'] = 'somatic'
         if step in extra_recordings:
             protocols[step]['extra_recordings'] = extra_recordings[step]['extra_recordings']
         features[step] = {}
@@ -890,6 +910,27 @@ def diff_features():
 
 
 ############################################################
+###                        MERGE                         ###
+############################################################
+
+
+def merge_features():
+    parser = arg.ArgumentParser(description='Merge feature and protocol files from several JSON files.',
+                                prog=progname+' merge')
+    parser.add_argument('files', type=str, nargs='+', help='feature files')
+    parser.add_argument('-o', '--output', default='merged', help='output suffix (default: merged)')
+    args = parser.parse_args(args=sys.argv[2:])
+    suffix = '_' + args.output if args.output != '' else ''
+    features = {}
+    protocols = {}
+    for f in args.files:
+        features.update(json.load(open(f, 'r')))
+        protocols.update(json.load(open(f.replace('features','protocols'), 'r')))
+    json.dump(features, open('features' + suffix + '.json', 'w'), indent=4)
+    json.dump(protocols, open('protocols' + suffix + '.json', 'w'), indent=4)
+
+
+############################################################
 ###                         DUMP                         ###
 ############################################################
 
@@ -1104,6 +1145,7 @@ def help():
         print('   write-xls      Write a configuration file using data from multiple cells stored in an Excel file.')
         print('   diff           Show differences between two feature files in a human way.')
         print('   dump           Dump feature files into several CSV files.')
+        print('   merge          Merge feature and protocol files.')
         print('')
         print('Type \'%s help <command>\' for help about a specific command.' % progname)
 
@@ -1115,7 +1157,7 @@ def help():
 
 # all the commands currently implemented
 commands = {'help': help, 'extract': extract_features, 'write': write_features, 'write-xls': write_features_xls,
-            'diff': diff_features, 'dump': dump_features, 'pick-files': pick_files}
+            'diff': diff_features, 'dump': dump_features, 'pick-files': pick_files, 'merge': merge_features}
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):
