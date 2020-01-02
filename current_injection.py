@@ -130,7 +130,7 @@ def plot_results(recorders, apical_dst=None, basal_dst=None, gbars=None, x_lim=N
     plt.show()
 
 
-def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, N=1, freq=np.inf, replace_axon=False, \
+def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, mechanisms, N=1, freq=np.inf, replace_axon=False, \
                         add_axon_if_missing=True, cell_name=None, neuron=None, do_plot=False, verbose=False):
 
     if neuron is not None:
@@ -148,7 +148,33 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, N=1, fr
     if len(I) != N:
         raise Exception('Number of stimuli does not agree with number of current values')
 
-    stimuli = [h.IClamp(cell.morpho.soma[0](0.5)) for _ in range(N)]
+
+    if inj_loc == 'soma':
+        inj_seg = cell.morpho.soma[0](0.5)
+    else:
+        inj_seg = None
+        h.distance(0, 0.5, sec=cell.morpho.soma[0])
+        if inj_loc == 'apical':
+            sections = cell.morpho.apic
+        elif inj_loc == 'basal':
+            sections = cell.morpho.basal
+        elif inj_loc == 'axon':
+            sections = cell.morpho.axon
+        else:
+            raise Exception('Unknown group "{}"'.format(inj_loc))
+        for sec in sections:
+            for seg in sec:
+                if h.distance(1, seg.x, sec=sec) >= inj_dist:
+                    inj_seg = seg
+                    print('Adding stimulus on "{}" at a distance of {:.2f} um.'\
+                          .format(inj_loc, h.distance(1, seg.x, sec=sec)))
+                    break
+            if inj_seg is not None:
+                break
+        if inj_seg is None:
+            raise Exception('No segment on "{}" at a distance of {:.2f} um'.format(inj_loc, inj_dist))
+
+    stimuli = [h.IClamp(inj_seg) for _ in range(N)]
     for i,(stim,amp) in enumerate(zip(stimuli,I)):
         stim.delay = delay + i/freq*1000
         stim.dur = dur
@@ -186,6 +212,8 @@ def main():
     parser.add_argument('--delay', default=1000., type=float, help='delay before stimulus onset (default: 1000 ms)')
     parser.add_argument('-N','--number', default=1, type=int, help='number of current steps (default 1)')
     parser.add_argument('-F','--frequency', default=np.inf, type=float, help='frequency of current steps (default +inf)')
+    parser.add_argument('--injection-site', default='soma', type=str, help='injection site (default soma)')
+    parser.add_argument('--injection-site-distance', default=0, type=float, help='injection distance (default 0 um)')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-p','--params-file', type=str, default=None,
                         help='JSON file containing the parameters of the model', required=True)
@@ -212,13 +240,21 @@ def main():
         print('The frequency of the current steps must be > 0')
         sys.exit(2)
 
+    if not args.injection_site in ('soma','apical','basal','axon'):
+        print('Unknown injection site: accepted values are "soma", "apical", "basal" and "axon".')
+        sys.exit(3)
+
+    if args.injection_site_distance < 0:
+        print('Injection distance must be > 0.')
+        sys.exit(4)
+
     if args.mech_file is not None and args.config_file is not None:
         print('--mech-file and --config-file cannot both be present.')
-        sys.exit(3)
+        sys.exit(5)
 
     if args.config_file is not None and args.cell_name is None:
         print('You must specify --cell-name with --config-file.')
-        sys.exit(4)
+        sys.exit(6)
 
     parameters = json.load(open(args.params_file,'r'))
 
@@ -246,7 +282,7 @@ def main():
             replace_axon = False
         else:
             print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
-            sys.exit(5)
+            sys.exit(7)
 
     if args.add_axon_if_missing == None:
         if sim_pars is None:
@@ -261,9 +297,10 @@ def main():
             add_axon_if_missing = False
         else:
             print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
-            sys.exit(6)
+            sys.exit(8)
 
-    rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file, parameters, mechanisms, \
+    rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file, args.injection_site, \
+                              args.injection_site_distance, parameters, mechanisms, \
                               args.number, args.frequency, replace_axon, add_axon_if_missing, \
                               do_plot=args.plot, verbose=args.verbose)
         
