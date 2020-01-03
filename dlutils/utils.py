@@ -80,15 +80,17 @@ def build_parameters_dict(individuals, evaluator, config=None, default_parameter
                     if param_name in ('g_pas','e_pas','cm','Ra'):
                         param['type'] = 'section'
                     else:
-                        param['mech'] = param_name.split('_')[-1]
-                        param['mech_param'] = '_'.join(param_name.split('_')[:-1])
+                        for mech in config['mechanisms'][section_list]:
+                            if mech in param_name:
+                                param['mech'] = mech
+                                param['mech_param'] = param_name[:param_name.rfind(mech)-1]
+                                break
                         param['type'] = 'range'
 
                     if dist_type == 'secvar':
                         dist_type = 'uniform'
                     elif dist_type != 'uniform':
                         param['dist'] = config['distributions'][dist_type]
-                        dist_type = dist_type.split('_')[0]
 
                     param['dist_type'] = dist_type
 

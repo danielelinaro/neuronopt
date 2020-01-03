@@ -21,7 +21,7 @@ ASSIGNED	{
 	v	(mV)
 	eca	(mV)
 	ica	(mA/cm2)
-	gCa	(S/cm2)
+	gCa_HVA	(S/cm2)
 	mInf
 	mTau
 	mAlpha
@@ -39,8 +39,8 @@ STATE	{
 
 BREAKPOINT	{
 	SOLVE states METHOD cnexp
-	gCa = gCa_HVAbar*m*m*h
-	ica = gCa*(v-eca)
+	gCa_HVA = gCa_HVAbar*m*m*h
+	ica = gCa_HVA*(v-eca)
 }
 
 DERIVATIVE states	{

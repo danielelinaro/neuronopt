@@ -10,7 +10,6 @@ import json
 import time
 
 
-
 def make_cell(swc_file, parameters, mechanisms, cell_name=None, replace_axon=False, add_axon_if_missing=True):
     if cell_name is None:
         import random
@@ -21,7 +20,7 @@ def make_cell(swc_file, parameters, mechanisms, cell_name=None, replace_axon=Fal
     return cell
 
 
-def make_recorders(cell, h, apical_dst=None, basal_dst=None, mech_vars=None):
+def make_recorders(cell, h, apical_dst={}, basal_dst={}, mech_vars=None):
     recorders = {'spike_times': h.Vector()}
     apc = h.APCount(cell.morpho.soma[0](0.5))
     apc.thresh = -20.
@@ -40,14 +39,21 @@ def make_recorders(cell, h, apical_dst=None, basal_dst=None, mech_vars=None):
     else:
         print('The cell has no axon.')
 
+    apical_seg = {}
+    basal_seg = {}
+
     if apical_dst is not None and cell.n_apical_sections > 0:
         h.distance(0, 0.5, sec=cell.morpho.soma[0])
         for sec in cell.morpho.apic:
             for seg in sec:
                 for k,v in apical_dst.items():
                     if not k+'.v' in recorders and h.distance(1, seg.x, sec=sec) >= v:
-                        recorders[k+'.v'] = h.Vector()
+                        apical_seg[k] = seg
+                        for lbl in '.v','.cai','.ica':
+                            recorders[k+lbl] = h.Vector()
                         recorders[k+'.v'].record(seg._ref_v)
+                        recorders[k+'.cai'].record(seg._ref_cai)
+                        recorders[k+'.ica'].record(seg._ref_ica)
                         print('Adding recorder on the apical dendrite at a distance of {:.2f} um.'\
                               .format(h.distance(1, seg.x, sec=sec)))
     if basal_dst is not None and cell.n_basal_sections > 0:
@@ -56,28 +62,50 @@ def make_recorders(cell, h, apical_dst=None, basal_dst=None, mech_vars=None):
             for seg in sec:
                 for k,v in basal_dst.items():
                     if not k+'.v' in recorders and h.distance(1, seg.x, sec=sec) >= v:
-                        recorders[k+'.v'] = h.Vector()
+                        basal_seg[k] = seg
+                        for lbl in '.v','.cai','.ica':
+                            recorders[k+lbl] = h.Vector()
                         recorders[k+'.v'].record(seg._ref_v)
+                        recorders[k+'.cai'].record(seg._ref_cai)
+                        recorders[k+'.ica'].record(seg._ref_ica)
                         print('Adding recorder on the basal dendrite at a distance of {:.2f} um.'\
                               .format(h.distance(1, seg.x, sec=sec)))
 
     if mech_vars is None:
-        return recorders
+        return recorders,None
+
+    def make_rec(seg, cell, prefix, mech_var, name):
+        key = prefix + '.' + mech_var + '_' + name
+        rec = h.Vector()
+        rec.record(getattr(seg, '_ref_' + mech_var + '_' + name))
+        try:
+            gbar = getattr(seg, 'gbar_' + name)
+        except:
+            try:
+                gbar = getattr(seg, 'g' + name + 'bar_' + name)
+            except:
+                gbar = getattr(seg, 'g' + name[:2] + 'bar_' + name)
+        return rec,gbar,key
 
     gbars = {}
-    for mech in cell.morpho.soma[0](0.5):
-        name = mech.name()
-        if name in mech_vars:
-            key = 'soma.' + mech_vars[name] + '_' + name
-            recorders[key] = h.Vector()
-            recorders[key].record(getattr(cell.morpho.soma[0](0.5), '_ref_' + mech_vars[name] + '_' + name))
+    for mech_name,var_name in mech_vars.items():
+        try:
+            rec,gbar,key = make_rec(cell.morpho.soma[0](0.5), cell, 'soma', var_name, mech_name)
+            recorders[key],gbars[key] = rec,gbar
+        except:
+            pass
+        for k,seg in apical_seg.items():
             try:
-                gbars[key] = getattr(cell.morpho.soma[0](0.5), 'gbar_' + name)
+                rec,gbar,key = make_rec(seg, cell, k, var_name, mech_name)
+                recorders[key],gbars[key] = rec,gbar
             except:
-                try:
-                    gbars[key] = getattr(cell.morpho.soma[0](0.5), 'g' + name + 'bar_' + name)
-                except:
-                    gbars[key] = getattr(cell.morpho.soma[0](0.5), 'g' + name[:2] + 'bar_' + name)
+                pass
+        for k,seg in basal_seg.items():
+            try:
+                rec,gbar,key = make_rec(seg, cell, k, var_name, mech_name)
+                recorders[key],gbars[key] = rec,gbar
+            except:
+                pass
 
     return recorders,gbars
 
@@ -96,42 +124,48 @@ def run_simulation(tstop, h, verbose=False):
             cell_name,fmt(time.localtime(stop)),stop-start))
 
 
-def plot_results(recorders, apical_dst=None, basal_dst=None, gbars=None, x_lim=None):
+def plot_results(recorders, gbars=None, apical_dst={}, basal_dst={}, x_lim=None):
     apical_col = 'rm'
     basal_col = 'gc'
     fig,ax = plt.subplots(3, 1, sharex=True, figsize=(6,4))
     t = np.array(recorders['t'])
-    if apical_dst is not None:
-        for i,(k,v) in enumerate(apical_dst.items()):
-            if k+'.v' in recorders:
-                ax[0].plot(t,recorders[k+'.v'],apical_col[i],label='Apical - {:.0f} um'.format(v))
-    if basal_dst is not None:
-        for i,(k,v) in enumerate(basal_dst.items()):
-            if k+'.v' in recorders:
-                ax[0].plot(t,recorders[k+'.v'],basal_col[i],label='Basal - {:.0f} um'.format(v))
+    for i,(k,v) in enumerate(apical_dst.items()):
+        ax[0].plot(t, recorders[k+'.v'], apical_col[i], label='Apical - {:.0f} um'.format(v))
+        ax[1].plot(t, np.array(recorders[k+'.cai'])*1e3, apical_col[i])
+        ax[2].plot(t, np.array(recorders[k+'.ica'])*1e3, apical_col[i])
+    for i,(k,v) in enumerate(basal_dst.items()):
+        ax[0].plot(t, recorders[k+'.v'], basal_col[i], label='Basal - {:.0f} um'.format(v))
+        ax[1].plot(t, np.array(recorders[k+'.cai'])*1e3, basal_col[i])
+        ax[2].plot(t, np.array(recorders[k+'.ica'])*1e3, basal_col[i])
     ax[0].plot(t,recorders['soma.v'],'k',label='Soma')
     ax[0].set_ylabel(r'$V_m$ (mV)')
     ax[0].legend(loc='best')
     ax[1].plot(t,np.array(recorders['soma.cai'])*1e3,'k')
     ax[1].set_ylabel(r'$Ca_i$ ($\mu$M)')
-    ax[2].plot(t,np.array(recorders['soma.ica'])*1e6,'k')
-    ax[2].set_ylabel(r'$I_{Ca}$ (pA)')
+    ax[2].plot(t,np.array(recorders['soma.ica'])*1e3,'k')
+    ax[2].set_ylabel(r'$I_{Ca}$ (nA)')
     ax[2].set_xlabel('Time (ms)')
     if x_lim is not None:
         ax[2].set_xlim(x_lim)
     plt.savefig('step.pdf')
     if gbars is not None:
-        fig,ax = plt.subplots(1, 1, figsize=(6,4))
+        fig = None
         for name,rec in recorders.items():
-            if 'soma' in name and not name.split('.')[1] in ('v','cai','ica'):
+            if ('soma' in name or 'apic' in name or 'basal' in name or 'axon' in name) \
+               and not name.split('.')[1] in ('v','cai','ica'):
+                if fig is None:
+                    fig,ax = plt.subplots(1, 1, figsize=(6,4))
                 ax.plot(recorders['t'], np.array(rec)/gbars[name], label=name)
-        ax.legend(loc='best')
-        ax.set_xlim([delay - 50, delay + dur + 100])
+        if fig is not None:
+            ax.legend(loc='best')
+            if x_lim is not None:
+                ax.set_xlim(x_lim)
     plt.show()
 
 
-def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, mechanisms, N=1, freq=np.inf, replace_axon=False, \
-                        add_axon_if_missing=True, cell_name=None, neuron=None, do_plot=False, verbose=False):
+def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, mechanisms, N=1, freq=np.inf,
+                        apical_dst={}, basal_dst={}, current_recordings='', replace_axon=False, add_axon_if_missing=True,
+                        cell_name=None, neuron=None, do_plot=False, verbose=False):
 
     if neuron is not None:
         h = neuron.h
@@ -147,7 +181,6 @@ def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, 
 
     if len(I) != N:
         raise Exception('Number of stimuli does not agree with number of current values')
-
 
     if inj_loc == 'soma':
         inj_seg = cell.morpho.soma[0](0.5)
@@ -180,26 +213,35 @@ def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, 
         stim.dur = dur
         stim.amp = amp*1e-3
 
-    apical_dst = {'apic1': 500, 'apic2': 600}
-    basal_dst = {'basal1': 100, 'basal2': 200}
-    recorders = make_recorders(cell, h, apical_dst, basal_dst)
+    CA3_mech_vars = {'kca': 'gk', 'kap': 'gka', 'cat': 'gcat', 'cal': 'gcal', 'can': 'gcan', \
+                     'cagk': 'gkca', 'kad': 'gka'}
+    CTX_mech_vars = {'Ca_HVA': 'gCa_HVA', 'Ca_LVAst': 'gCa_LVAst'}
 
-    #CA3_mech_vars = {'kca': 'gk', 'kap': 'gka', 'cat': 'gcat', 'cal': 'gcal', 'can': 'gcan', \
-    #                 'cagk': 'gkca', 'kad': 'gka'}
-    #recorders,gbars = make_recorders(cell, apical_dst, basal_dst, CA3_mech_vars)
-    #try:
-    #    rec = h.Vector()
-    #    rec.record(cell.morpho.soma[0](0.5)._ref_m_kmb)
-    #    recorders['soma.m_kmb'] = rec
-    #    gbars['soma.m_kmb'] = 1
-    #except:
-    #    pass
+    if current_recordings == '':
+        mech_vars = {}
+    elif current_recordings == 'CA3':
+        mech_vars = CTX_mech_vars
+    elif current_recordings == 'CTX':
+        mech_vars = CTX_mech_vars
+    else:
+        raise Exception('current_recordings must be either "CA3" or "CTX"')
+
+    recorders,gbars = make_recorders(cell, h, apical_dst, basal_dst, mech_vars)
+
+    if current_recordings == 'CA3':
+        try:
+            rec = h.Vector()
+            rec.record(cell.morpho.soma[0](0.5)._ref_m_kmb)
+            recorders['soma.m_kmb'] = rec
+            gbars['soma.m_kmb'] = 1
+        except:
+            pass
 
     t_end = dur + (N-1) / freq * 1000 + delay + 100
     run_simulation(t_end, h, verbose)
 
     if do_plot:
-        plot_results(recorders, apical_dst, basal_dst, x_lim=[delay-50, t_end])
+        plot_results(recorders, gbars, apical_dst, basal_dst, x_lim=[delay-50, t_end])
 
     h('forall delete_section()')
     return recorders
@@ -208,12 +250,6 @@ def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, 
 def main():
     parser = arg.ArgumentParser(description='Compute the f-I curve of a neuron model.')
     parser.add_argument('I', type=float, action='store', nargs='+', help='current value in pA')
-    parser.add_argument('--dur', required=True, type=float, help='stimulus duration')
-    parser.add_argument('--delay', default=1000., type=float, help='delay before stimulus onset (default: 1000 ms)')
-    parser.add_argument('-N','--number', default=1, type=int, help='number of current steps (default 1)')
-    parser.add_argument('-F','--frequency', default=np.inf, type=float, help='frequency of current steps (default +inf)')
-    parser.add_argument('--injection-site', default='soma', type=str, help='injection site (default soma)')
-    parser.add_argument('--injection-site-distance', default=0, type=float, help='injection distance (default 0 um)')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-p','--params-file', type=str, default=None,
                         help='JSON file containing the parameters of the model', required=True)
@@ -230,9 +266,19 @@ def main():
     parser.add_argument('-o','--output', type=str, default='step.pkl', help='output file name (default: step.pkl)')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose (default: no)')
+    parser.add_argument('--dur', required=True, type=float, help='stimulus duration')
+    parser.add_argument('--delay', default=1000., type=float, help='delay before stimulus onset (default: 1000 ms)')
+    parser.add_argument('-N','--nsteps', default=1, type=int, help='number of current steps (default 1)')
+    parser.add_argument('-F','--frequency', default=np.inf, type=float, help='frequency of current steps (default +inf)')
+    parser.add_argument('--injection-site', default='soma', type=str, help='injection site (default soma)')
+    parser.add_argument('--injection-site-distance', default=0, type=float, help='injection distance (default 0 um)')
+    parser.add_argument('--basal-recordings', default='', type=str, help='Comma-separated recording distances along the basal dendrite')
+    parser.add_argument('--apical-recordings', default='', type=str, help='Comma-separated recording distances along the apical dendrite')
+    parser.add_argument('--current-recordings', default='', type=str,
+                        help='Which current sets to record (default none, accepted values are "CA3" and "CTX")')
     args = parser.parse_args(args=sys.argv[1:])
 
-    if args.number < 1:
+    if args.nsteps < 1:
         print('The number of current steps must be >= 1')
         sys.exit(1)
 
@@ -299,9 +345,23 @@ def main():
             print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
             sys.exit(8)
 
+    if args.current_recordings.upper() not in ('', 'CA3', 'CTX'):
+        print('Accepted values for --current-recordings are "CA3" and "CTX".')
+        sys.exit(9)
+
+    if args.apical_recordings == '':
+        apical_dst = {}
+    else:
+        apical_dst = {'apic{}'.format(i+1): float(dst) for i,dst in enumerate(args.apical_recordings.split(','))}
+    if args.basal_recordings == '':
+        basal_dst = {}
+    else:
+        basal_dst = {'basal{}'.format(i+1): float(dst) for i,dst in enumerate(args.basal_recordings.split(','))}
+
     rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file, args.injection_site, \
                               args.injection_site_distance, parameters, mechanisms, \
-                              args.number, args.frequency, replace_axon, add_axon_if_missing, \
+                              args.nsteps, args.frequency, apical_dst, basal_dst, \
+                              args.current_recordings.upper(), replace_axon, add_axon_if_missing, \
                               do_plot=args.plot, verbose=args.verbose)
         
     step = {'I': args.I, 'time': np.array(rec['t']), 'voltage': np.array(rec['soma.v']), 'spike_times': np.array(rec['spike_times'])}
