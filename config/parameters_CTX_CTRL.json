@@ -67,7 +67,7 @@
     "mechanisms": {
         "basal":   ["Ih"], 
         "all":     ["pas"], 
-        "apical":  ["Ih", "Im", "SKv3_1", "NaTs2_t", "Ca_HVA", "Ca_LVAst"],
+        "apical":  ["Ih", "Im", "SKv3_1", "NaTs2_t", "CaDynamics_E2", "Ca_HVA", "Ca_LVAst"],
         "axonal":  ["Ca_LVAst", "Ca_HVA", "CaDynamics_E2", "SKv3_1", "SK_E2", "K_Tst", "K_Pst", "Nap_Et2", "NaTa_t"], 
         "somatic": ["NaTs2_t", "SKv3_1", "SK_E2", "CaDynamics_E2", "Ca_HVA", "Ca_LVAst", "Ih"]
     }, 
@@ -101,6 +101,10 @@
             ["g_pas", 2e-5, 20e-5, "uniform" ],
             ["e_pas", -90, -50, "uniform" ]
         ], 
+        "allnoaxon": [
+            ["e_pas", -90, -55, "uniform" ],
+            ["g_pas", 0.5e-5, 15e-5, "uniform" ]
+        ],
         "somatic": [
             ["gNaTs2_tbar_NaTs2_t", 0, 1, "uniform"],
             ["gSKv3_1bar_SKv3_1", 0, 1, "uniform"],
@@ -110,24 +114,22 @@
             ["gamma_CaDynamics_E2", 0.0005, 0.05, "uniform"],
             ["decay_CaDynamics_E2", 20, 1000, "uniform"],
             ["gIhbar_Ih", 7.999e-05, 8.001e-05, "uniform"],
-            ["e_pas", -90, -55, "uniform" ]
-        ],
-        "allnoaxon": [
-            ["Ra", 100, 400, "secvar"],
-            ["g_pas", 0.5e-5, 15e-5, "uniform" ]
+            ["Ra", 100, 400, "secvar"]
         ],
         "basal": [
             ["gIhbar_Ih", 7.999e-05, 8.001e-05, "uniform"],
-            ["e_pas", -90, -55, "uniform" ]
+            ["Ra", 50, 400, "secvar"]
         ], 
         "apical": [
-            ["gNaTs2_tbar_NaTs2_t", 0, 0.04, "linear_gNaTs2_apic"],
+            ["gNaTs2_tbar_NaTs2_t", 0, 0.04, "uniform"],
             ["gSKv3_1bar_SKv3_1", 0, 0.04, "uniform"],
             ["gImbar_Im", 0, 0.001, "uniform"],
             ["gIhbar_Ih", 7.999e-05, 8.001e-05, "exp"],
-            ["e_pas", -90, -55, "linear_e_pas_apic" ],
-            ["gCa_HVAbar_Ca_HVA", 0, 0.001, "hotspot_Ca_HVA_apic"],
-            ["gCa_LVAstbar_Ca_LVAst", 0, 0.01, "hotspot_Ca_LVAst_apic"]
+            ["gamma_CaDynamics_E2", 0.0005, 0.05, "uniform"],
+            ["decay_CaDynamics_E2", 20, 1000, "uniform"],
+            ["gCa_HVAbar_Ca_HVA", 0, 0.0005, "hotspot_Ca_HVA_apic"],
+            ["gCa_LVAstbar_Ca_LVAst", 0, 0.001, "hotspot_Ca_LVAst_apic"],
+            ["Ra", 50, 400, "secvar"]
         ]
     }
 }
