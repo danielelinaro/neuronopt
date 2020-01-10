@@ -57,13 +57,13 @@ class AMPANMDASynapse (Synapse):
         return self.ampa_syn
 
 
-def build_cell_with_synapses(swc_file, parameters, mechanisms, distr_name, mu, sigma, scaling=1., slm_border=100.):
+def build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, distr_name, mu, sigma, scaling=1., slm_border=100.):
     """
     Builds a cell and inserts one synapse per segment. Each synapse is activated sequentially.
     """
 
     cell = cu.Cell('CA3_cell_%d' % int(np.random.uniform()*1e5), swc_file, parameters, mechanisms)
-    cell.instantiate()
+    cell.instantiate(replace_axon, add_axon_if_missing)
 
     if distr_name == 'normal':
         rand_func = np.random.normal

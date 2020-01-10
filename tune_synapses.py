@@ -8,9 +8,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
-from neuron import h
-from dlutils import synapse as su
-from dlutils import utils
 import json
 
 # the name of this script
@@ -21,11 +18,15 @@ normal = lambda x,m,s: 1./(np.sqrt(2*np.pi*s**2)) * np.exp(-(x-m)**2/(2*s**2))
 lognormal = lambda x,m,s: 1./(s*x*np.sqrt(2*np.pi)) * np.exp(-(np.log(x)-m)**2/(2*s**2))
 
 
-def simulate_synaptic_activation(swc_file, parameters, mechanisms, distr_name, mu, sigma, scaling, reps, output_dir='.'):
+def simulate_synaptic_activation(swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, distr_name, mu, sigma, scaling, reps, output_dir='.'):
     """
     Instantiates reps cells and simulates them while recording the membrane potential. EPSPs are then extracted and their
     distribution is computed and fit with an appropriate distribution. Also saves the results to disk.
     """
+
+    from neuron import h
+    from dlutils import synapse as su
+
     # do not insert synapses into the apical dendrites that are in SLM: these are the segments that lie within slm_border
     # microns from the distal tip of the dendrites
     slm_border = 100.
@@ -34,15 +35,16 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, distr_name, m
     # interval between consecutive synapses being activated
     dt = 250.
 
-    print('(mu,sigma) = (%g,%g): ' % (mu,sigma))
+    print('(mu,sigma) = ({},{}): '.format(mu,sigma))
 
     # instantiate cells, synapses and recorders
     cells = []
     synapses = []
     recorders = [h.Vector() for rep in range(reps)]
     for rep in range(reps):
-        cell,syn = su.build_cell_with_synapses(swc_file, parameters, mechanisms, distr_name, \
-                                               mu, sigma, scaling, slm_border)
+        cell,syn = su.build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, \
+                                               add_axon_if_missing, distr_name, mu, sigma, \
+                                               scaling, slm_border)
         # activate each synapse in a sequential fashion
         t_event = delay
         for syn_group in syn.values():
@@ -55,16 +57,17 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, distr_name, m
 
     # total duration of the simulation
     tend = delay + sum(map(len,syn.values()))*dt
-    
+    print('Total duration of the simulation: {:.0f} ms.'.format(tend))
+
     # run the simulation
     start = time.time()
     now = time.localtime(start)
-    sys.stdout.write('%02d/%02d %02d:%02d:%02d >> ' % (now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec))
+    sys.stdout.write('{:02d}/{:02d} {:02d}:{:02d}:{:02d} >> '.format(now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec))
     sys.stdout.flush()
     h.cvode_active(1)
     h.tstop = tend
     h.run()
-    sys.stdout.write('elapsed time: %d seconds.\n' % (time.time()-start))
+    sys.stdout.write('elapsed time: {:.0f} seconds.\n'.format(time.time()-start))
 
     # extract the EPSPs from all the recordings
     EPSP_amplitudes = np.array([])
@@ -74,7 +77,7 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, distr_name, m
         pks = find_peaks(V,height=Vrest+0.1)[0]
         EPSP_amplitudes = np.concatenate((EPSP_amplitudes, V[pks]-Vrest))
         
-    print('Mean EPSP amplitude: %g mV.' % np.mean(EPSP_amplitudes))
+    print('Mean EPSP amplitude: {} mV.'.format(np.mean(EPSP_amplitudes)))
 
     # compute the EPSPs amplitudes histogram
     EPSP_amplitudes = EPSP_amplitudes[EPSP_amplitudes < 20]
@@ -107,6 +110,7 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, distr_name, m
 ###                       SIMULATE                       ###
 ############################################################
 
+
 def simulate():
     parser = arg.ArgumentParser(description='Simulate synaptic activation in a neuron model.')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
@@ -118,6 +122,10 @@ def simulate():
                         help='JSON file containing the configuration of the model')
     parser.add_argument('-n','--cell-name', type=str, default=None,
                         help='name of the cell as it appears in the configuration file')
+    parser.add_argument('-R','--replace-axon', type=str, default=None,
+                        help='whether to replace the axon (accepted values: "yes" or "no")')
+    parser.add_argument('-A', '--add-axon-if-missing', type=str, default=None,
+                        help='whether add an axon if the cell does not have one (accepted values: "yes" or "no")')
     parser.add_argument('--mean', default=None, type=float, help='mean of the distribution of the synaptic weights')
     parser.add_argument('--std', default=None, type=float, help='standard deviation of the distribution of the synaptic weights')
     parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
@@ -126,6 +134,8 @@ def simulate():
     parser.add_argument('--output-dir', default='.', type=str, help='output folder')
     
     args = parser.parse_args(args=sys.argv[2:])
+
+    from dlutils import utils
 
     if args.mean is None:
         raise ValueError('You must specify the mean of the distribution of synaptic weights')
@@ -146,21 +156,21 @@ def simulate():
         raise ValueError('The number of repetitions must be positive')
     
     if not os.path.isfile(args.swc_file):
-        print('%s: %s: no such file.' % (progname,args.swc_file))
+        print('{}: {}: no such file.'.format(progname,args.swc_file))
         sys.exit(1)
 
     if not os.path.isfile(args.params_file):
-        print('%s: %s: no such file.' % (progname,args.params_file))
+        print('{}: {}: no such file.'.format(progname,args.params_file))
         sys.exit(1)
 
     if args.mech_file is not None:
         if not os.path.isfile(args.mech_file):
-            print('%s: %s: no such file.' % (progname,args.mech_file))
+            print('{}: {}: no such file.'.format(progname,args.mech_file))
             sys.exit(1)
         mechanisms = json.load(open(args.mech_file,'r'))
     elif args.config_file is not None:
         if not os.path.isfile(args.config_file):
-            print('%s: %s: no such file.' % (progname,args.config_file))
+            print('{}: {}: no such file.'.format(progname,args.config_file))
             sys.exit(1)
         if args.cell_name is None:
             print('--cell-name must be present with --config-file option.')
@@ -169,13 +179,50 @@ def simulate():
 
     parameters = json.load(open(args.params_file,'r'))
 
-    simulate_synaptic_activation(args.swc_file, parameters, mechanisms, args.distr, \
-                                 args.mean, args.std, args.scaling, args.reps, args.output_dir)
+    try:
+        sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
+    except:
+        sim_pars = None
+
+    if args.replace_axon == None:
+        if sim_pars is None:
+            replace_axon = False
+        else:
+            replace_axon = sim_pars['replace_axon']
+            print('Setting replace_axon = {} as per original optimization.'.format(replace_axon))
+    else:
+        if args.replace_axon.lower() in ('y','yes'):
+            replace_axon = True
+        elif args.replace_axon.lower() in ('n','no'):
+            replace_axon = False
+        else:
+            print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
+            sys.exit(7)
+
+    if args.add_axon_if_missing == None:
+        if sim_pars is None:
+            add_axon_if_missing = True
+        else:
+            add_axon_if_missing = not sim_pars['no_add_axon']
+            print('Setting add_axon_if_missing = {} as per original optimization.'.format(add_axon_if_missing))
+    else:
+        if args.add_axon_if_missing.lower() in ('y','yes'):
+            add_axon_if_missing = True
+        elif args.add_axon_if_missing.lower() in ('n','no'):
+            add_axon_if_missing = False
+        else:
+            print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
+            sys.exit(8)
+
+    simulate_synaptic_activation(args.swc_file, parameters, mechanisms, replace_axon, \
+                                 add_axon_if_missing, args.distr, args.mean, args.std, \
+                                 args.scaling, args.reps, args.output_dir)
 
 
 ############################################################
 ###                         PLOT                         ###
 ############################################################
+
 
 def plot():
     parser = arg.ArgumentParser(description='Plot the results of the simulation',
@@ -187,10 +234,13 @@ def plot():
 
     f_in = args.pkl_file
     if not os.path.isfile(f_in):
-        print('%s: %s: no such file.' % (progname,f_in))
+        print('{}: {}: no such file.'.format(progname,f_in))
         sys.exit(0)
 
     data = pickle.load(open(f_in,'rb'))
+
+    from dlutils import graphics
+    graphics.set_rc_defaults()
 
     fix = False
     if fix:
@@ -213,16 +263,23 @@ def plot():
         f_out = args.output
 
     x = data['edges'][:-1] + data['binwidth']/2
-    plt.figure(figsize=(6,5))
-    plt.bar(x,data['hist'],width=data['binwidth'])
+    fig = plt.figure(figsize=(4,3))
+    ax = plt.axes([0.15,0.175,0.8,0.725])
+    ax.bar(x, data['hist'], width=data['binwidth'], facecolor='k', edgecolor='w')
     if data['distr_name'] == 'normal':
-        plt.plot(data['edges'],normal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
+        ax.plot(data['edges'],normal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
     else:
-        plt.plot(data['edges'],lognormal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
-    plt.xlabel('EPSP amplitude (mV)')
-    plt.ylabel('PDF')
-    plt.title('mu,sigma = %g,%g' % (data['mu'],data['sigma']))
-    plt.xlim([0,6])
+        ax.plot(data['edges'],lognormal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
+    ax.set_xlabel('EPSP amplitude (mV)')
+    ax.set_ylabel('PDF')
+    if 'mu' in data:
+        m = data['mu']
+        s = data['sigma']
+    else:
+        m = data['mean']
+        s = data['std']
+    ax.set_title('mu,sigma = {},{}'.format(m,s))
+    ax.set_xlim([0,6])
     plt.savefig(f_out)
 
 
@@ -230,24 +287,26 @@ def plot():
 ###                         HELP                         ###
 ############################################################
 
+
 def help():
     if len(sys.argv) > 2 and sys.argv[2] in commands:
         cmd = sys.argv[2]
         sys.argv = [sys.argv[0], cmd, '-h']
         commands[cmd]()
     else:
-        print('Usage: %s <command> [<args>]' % progname)
+        print('Usage: {} <command> [<args>]'.format(progname))
         print('')
         print('Available commands are:')
         print('   simulate       Simulate synaptic activation')
         print('   plot           Plot the results')
         print('')
-        print('Type \'%s help <command>\' for help about a specific command.' % progname)
+        print('Type \'{} help <command>\' for help about a specific command.'.format(progname))
 
 
 ############################################################
 ###                         MAIN                         ###
 ############################################################
+
 
 # all the commands currently implemented
 commands = {'help': help, 'simulate': simulate, 'plot': plot}
@@ -257,7 +316,7 @@ def main():
         commands['help']()
         sys.exit(0)
     if not sys.argv[1] in commands:
-        print('%s: %s is not a recognized command. See \'%s --help\'.' % (progname,sys.argv[1],progname))
+        print('{}: {} is not a recognized command. See \'{} --help\'.'.format(progname,sys.argv[1],progname))
         sys.exit(1)
     commands[sys.argv[1]]()
 
