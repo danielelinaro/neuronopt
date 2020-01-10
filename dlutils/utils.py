@@ -80,12 +80,29 @@ def build_parameters_dict(individuals, evaluator, config=None, default_parameter
                     if param_name in ('g_pas','e_pas','cm','Ra'):
                         param['type'] = 'section'
                     else:
-                        for mech in config['mechanisms'][section_list]:
+                        try:
+                            mechs = config['mechanisms'][section_list]
+                        except:
+                            if section_list == 'allnoaxon':
+                                mechs = config['mechanisms']['somatic']
+                            elif section_list == 'alldend':
+                                mechs = config['mechanisms']['apical']
+                            else:
+                                import ipdb
+                                ipdb.set_trace()
+                        if 'all' in config['mechanisms']:
+                            mechs += config['mechanisms']['all']
+
+                        for mech in mechs:
                             if mech in param_name:
                                 param['mech'] = mech
                                 param['mech_param'] = param_name[:param_name.rfind(mech)-1]
                                 break
                         param['type'] = 'range'
+                        if 'mech' not in param:
+                            # in case something goes wrong...
+                            import ipdb
+                            ipdb.set_trace()
 
                     if dist_type == 'secvar':
                         dist_type = 'uniform'
