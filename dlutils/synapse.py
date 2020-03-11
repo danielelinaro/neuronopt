@@ -3,7 +3,7 @@ import numpy as np
 from neuron import h
 from . import cell as cu
 
-__all__ = ['Synapse', 'AMPANMDASynapse', 'build_cell_with_synapses']
+__all__ = ['Synapse', 'AMPANMDASynapse', 'GABAASynapse', 'build_cell_with_synapses']
 
 class Synapse (object):
     def __init__(self, sec, x, weight, delay=1.):
@@ -55,6 +55,24 @@ class AMPANMDASynapse (Synapse):
         self.ampa_syn = h.AMPA_KIN(sec(x))
         self.nmda_syn = h.NMDA_KIN2(sec(x))
         return self.ampa_syn
+
+
+class GABAASynapse (Synapse):
+    def __init__(self, sec, x, E, weight, delay=1.):
+        Synapse.__init__(self, sec, x, weight, delay)
+
+        self.gaba_a_syn.Erev = E
+        self.gaba_a_syn.kon = 5.397
+        self.gaba_a_syn.koff = 4.433
+        self.gaba_a_syn.CC = 20.945
+        self.gaba_a_syn.CO = 1.233
+        self.gaba_a_syn.Beta = 283.09
+        self.gaba_a_syn.Alpha = 254.52
+        self.gaba_a_syn.gmax = 0.000603
+
+    def make_synapse(self, sec, x):
+        self.gaba_a_syn = h.GABA_A_KIN(sec(x))
+        return self.gaba_a_syn
 
 
 def build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, distr_name, mu, sigma, scaling=1., slm_border=100.):

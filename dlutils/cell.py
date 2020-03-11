@@ -134,7 +134,7 @@ class Cell (object):
         self.secarray_names = ['soma', 'dend', 'apic', 'axon', 'myelin']
 
 
-    def instantiate(self, replace_axon=False, add_axon_if_missing=True, use_dlambda_rule=False):
+    def instantiate(self, replace_axon=False, add_axon_if_missing=True, use_dlambda_rule=False, force_passive=False):
         self.template = Cell.create_empty_template(self.cell_name,self.seclist_names,self.secarray_names)
         h(self.template)
         self.template_function = getattr(h, self.cell_name)
@@ -182,7 +182,7 @@ class Cell (object):
         else:
             self.has_axon = False
 
-        self.biophysics(use_dlambda_rule)
+        self.biophysics(use_dlambda_rule, force_passive)
 
         h.distance(0, 0.5, sec=self.morpho.soma[0])
         self.compute_total_area()
@@ -190,18 +190,21 @@ class Cell (object):
         self.compute_path_lengths()
 
 
-    def biophysics(self, use_dlambda_rule):
+    def biophysics(self, use_dlambda_rule, force_passive):
+
+        passive_parameters = ['cm', 'Ra', 'e_pas', 'g_pas']
 
         for reg in self.mechanisms:
             mechs = self.mechanisms[reg]
             region = getattr(self.morpho,reg)
             for sec in region:
                 for mech in mechs:
-                    sec.insert(mech)
+                    if not force_passive or mech == 'pas':
+                        sec.insert(mech)
 
         if use_dlambda_rule:
             for param in self.parameters:
-                if param['param_name'] in ['cm','Ra','e_pas','g_pas']:
+                if param['param_name'] in passive_parameters:
                     region = getattr(self.morpho,param['sectionlist'])
                     for sec in region:
                         setattr(sec,param['param_name'],param['value'])
@@ -214,14 +217,16 @@ class Cell (object):
                 region = getattr(self.morpho,param['sectionlist'])
                 if param['dist_type'] == 'uniform':
                     for sec in region:
-                        setattr(sec,param['param_name'],param['value'])
+                        if not force_passive or param['param_name'] in passive_parameters:
+                            setattr(sec,param['param_name'],param['value'])
                 else:
                     h.distance(0, 0.5, sec=self.morpho.soma[0])
                     for sec in region:
                         for seg in sec:
                             dst = h.distance(1, seg.x, sec=sec)
                             g = eval(param['dist'].format(distance=dst,value=param['value']))
-                            setattr(seg,param['param_name'],g)
+                            if not force_passive or param['param_name'] in passive_parameters:
+                                setattr(seg,param['param_name'],g)
             else:
                 print('Unknown parameter type: %s.' % param['type'])
 
