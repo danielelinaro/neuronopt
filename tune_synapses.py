@@ -21,7 +21,8 @@ normal = lambda x,m,s: 1./(np.sqrt(2*np.pi*s**2)) * np.exp(-(x-m)**2/(2*s**2))
 lognormal = lambda x,m,s: 1./(s*x*np.sqrt(2*np.pi)) * np.exp(-(np.log(x)-m)**2/(2*s**2))
 
 
-def simulate_synaptic_activation(swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, distr_name, mu, sigma, scaling, reps, output_dir='.'):
+def simulate_synaptic_activation(swc_file, cell_parameters, mechanisms, replace_axon, add_axon_if_missing, \
+                                 passive_cell, synapse_parameters, distr_name, mu, sigma, scaling, reps, output_dir='.'):
     """
     Instantiates reps cells and simulates them while recording the membrane potential. EPSPs are then extracted and their
     distribution is computed and fit with an appropriate distribution. Also saves the results to disk.
@@ -45,9 +46,9 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, replace_axon,
     synapses = []
     recorders = [h.Vector() for rep in range(reps)]
     for rep in range(reps):
-        cell,syn = su.build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, \
-                                               add_axon_if_missing, distr_name, mu, sigma, \
-                                               scaling, slm_border)
+        cell,syn = su.build_cell_with_synapses(swc_file, cell_parameters, mechanisms, replace_axon, \
+                                               add_axon_if_missing, passive_cell, synapse_parameters, \
+                                               distr_name, mu, sigma, scaling, slm_border)
         # activate each synapse in a sequential fashion
         t_event = delay
         for syn_group in syn.values():
@@ -103,7 +104,8 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, replace_axon,
                (mu,sigma,now.tm_year,now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec)
 
     data = {'EPSP_amplitudes': EPSP_amplitudes, 'swc_file': swc_file, 'mechanisms': mechanisms, \
-            'parameters': parameters, 'distr_name': distr_name, 'mu': mu, 'sigma': sigma, \
+            'cell_parameters': cell_parameters, 'synapse_parameters': synapse_parameters, \
+            'distr_name': distr_name, 'mu': mu, 'sigma': sigma, \
             'scaling': scaling, 'slm_border': slm_border, 'hist': hist, 'binwidth': binwidth, \
             'edges': edges, 'popt': popt}
     pickle.dump(data,open(output_dir + '/' + filename + '.pkl','wb'))
@@ -117,8 +119,10 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, replace_axon,
 def simulate():
     parser = arg.ArgumentParser(description='Simulate synaptic activation in a neuron model.')
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-p','--params-file', type=str, default=None, required=True,
-                        help='JSON file containing the parameters of the model')
+    parser.add_argument('-p','--cell-params', type=str, default=None, required=True,
+                        help='JSON file containing the parameters of the cell')
+    parser.add_argument('-s','--synapse-params', type=str, default=None, required=True,
+                        help='JSON file containing the parameters of the synapses')
     parser.add_argument('-m','--mech-file', type=str, default=None,
                         help='JSON file containing the mechanisms to be inserted into the cell')
     parser.add_argument('-c','--config-file', type=str, default=None,
@@ -128,7 +132,9 @@ def simulate():
     parser.add_argument('-R','--replace-axon', type=str, default=None,
                         help='whether to replace the axon (accepted values: "yes" or "no")')
     parser.add_argument('-A', '--add-axon-if-missing', type=str, default=None,
-                        help='whether add an axon if the cell does not have one (accepted values: "yes" or "no")')
+                        help='whether to add an axon if the cell does not have one (accepted values: "yes" or "no")')
+    parser.add_argument('--model-type', type=str, default='active',
+                        help='whether to use a passive or active model (accepted values: "active" (default) or "passive")')
     parser.add_argument('--mean', default=None, type=float, help='mean of the distribution of the synaptic weights')
     parser.add_argument('--std', default=None, type=float, help='standard deviation of the distribution of the synaptic weights')
     parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
@@ -162,9 +168,15 @@ def simulate():
         print('{}: {}: no such file.'.format(progname,args.swc_file))
         sys.exit(1)
 
-    if not os.path.isfile(args.params_file):
-        print('{}: {}: no such file.'.format(progname,args.params_file))
+    if not os.path.isfile(args.cell_params):
+        print('{}: {}: no such file.'.format(progname,args.cell_params))
         sys.exit(1)
+    cell_parameters = json.load(open(args.cell_params, 'r'))
+
+    if not os.path.isfile(args.synapse_params):
+        print('{}: {}: no such file.'.format(progname,args.synapse_params))
+        sys.exit(1)
+    synapse_parameters = json.load(open(args.synapse_params, 'r'))
 
     if args.mech_file is not None:
         if not os.path.isfile(args.mech_file):
@@ -179,8 +191,6 @@ def simulate():
             print('--cell-name must be present with --config-file option.')
             sys.exit(1)
         mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
-
-    parameters = json.load(open(args.params_file,'r'))
 
     try:
         sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
@@ -217,9 +227,17 @@ def simulate():
             print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
             sys.exit(8)
 
-    simulate_synaptic_activation(args.swc_file, parameters, mechanisms, replace_axon, \
-                                 add_axon_if_missing, args.distr, args.mean, args.std, \
-                                 args.scaling, args.reps, args.output_dir)
+    if args.model_type == 'passive':
+        passive_cell = True
+    elif args.model_type == 'active':
+        passive_cell = False
+    else:
+        print('Unknown value for --model-type: "{}". Accepted values are `active` and `passive`.'.format(args.model_type))
+        sys.exit(9)
+
+    simulate_synaptic_activation(args.swc_file, cell_parameters, mechanisms, replace_axon, \
+                                 add_axon_if_missing, passive_cell, synapse_parameters, args.distr, \
+                                 args.mean, args.std, args.scaling, args.reps, args.output_dir)
 
 
 ############################################################
@@ -282,7 +300,7 @@ def plot():
         m = data['mean']
         s = data['std']
     ax.set_title('mu,sigma = {},{}'.format(m,s))
-    ax.set_xlim([0,6])
+    #ax.set_xlim([0,6])
     plt.savefig(f_out)
 
 

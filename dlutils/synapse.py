@@ -26,24 +26,24 @@ class Synapse (object):
 
 
 class AMPANMDASynapse (Synapse):
-    def __init__(self, sec, x, E, weight, delay=1.):
+    def __init__(self, sec, x, E, weight, delay=1., **kwargs):
         Synapse.__init__(self, sec, x, weight[0], delay)
 
         self.ampa_syn.Erev = E
-        self.ampa_syn.kon = 139.87
-        self.ampa_syn.koff = 4.05
-        self.ampa_syn.CC = 54.54
-        self.ampa_syn.CO = 10.85
-        self.ampa_syn.Beta = 102.37
-        self.ampa_syn.Alpha = 11.66
+        self.ampa_syn.kon = kwargs['AMPA']['kon'] if 'AMPA' in kwargs and 'kon' in kwargs['AMPA'] else 12.88
+        self.ampa_syn.koff = kwargs['AMPA']['koff'] if 'AMPA' in kwargs and 'koff' in kwargs['AMPA'] else 6.47
+        self.ampa_syn.CC = kwargs['AMPA']['CC'] if 'AMPA' in kwargs and 'CC' in kwargs['AMPA'] else 69.97
+        self.ampa_syn.CO = kwargs['AMPA']['CO'] if 'AMPA' in kwargs and 'CO' in kwargs['AMPA'] else 6.16
+        self.ampa_syn.Beta = kwargs['AMPA']['Beta'] if 'AMPA' in kwargs and 'Beta' in kwargs['AMPA'] else 100.63
+        self.ampa_syn.Alpha = kwargs['AMPA']['Alpha'] if 'AMPA' in kwargs and 'Alpha' in kwargs['AMPA'] else 173.04
 
         self.nmda_syn.Erev = E
-        self.nmda_syn.kon = 85.47
-        self.nmda_syn.koff = 0.68
-        self.nmda_syn.CC = 9.48
-        self.nmda_syn.CO = 2.56
-        self.nmda_syn.Beta = 0.72
-        self.nmda_syn.Alpha = 0.078
+        self.nmda_syn.kon = kwargs['NMDA']['kon'] if 'NMDA' in kwargs and 'kon' in kwargs['NMDA'] else 86.69
+        self.nmda_syn.koff = kwargs['NMDA']['koff'] if 'NMDA' in kwargs and 'koff' in kwargs['NMDA'] else 0.69
+        self.nmda_syn.CC = kwargs['NMDA']['CC'] if 'NMDA' in kwargs and 'CC' in kwargs['NMDA'] else 9.64
+        self.nmda_syn.CO = kwargs['NMDA']['CO'] if 'NMDA' in kwargs and 'CO' in kwargs['NMDA'] else 2.6
+        self.nmda_syn.Beta = kwargs['NMDA']['Beta'] if 'NMDA' in kwargs and 'Beta' in kwargs['NMDA'] else 0.68
+        self.nmda_syn.Alpha = kwargs['NMDA']['Alpha'] if 'NMDA' in kwargs and 'Alpha' in kwargs['NMDA'] else 0.079
 
         self.syn = [self.ampa_syn, self.nmda_syn]
         self.ampa_nc = self.nc
@@ -75,13 +75,14 @@ class GABAASynapse (Synapse):
         return self.gaba_a_syn
 
 
-def build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, distr_name, mu, sigma, scaling=1., slm_border=100.):
+def build_cell_with_synapses(swc_file, cell_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell, \
+                             synapse_parameters, distr_name, mu, sigma, scaling=1., slm_border=100.):
     """
     Builds a cell and inserts one synapse per segment. Each synapse is activated sequentially.
     """
 
-    cell = cu.Cell('CA3_cell_%d' % int(np.random.uniform()*1e5), swc_file, parameters, mechanisms)
-    cell.instantiate(replace_axon, add_axon_if_missing)
+    cell = cu.Cell('CA3_cell_%d' % int(np.random.uniform()*1e5), swc_file, cell_parameters, mechanisms)
+    cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
     if distr_name == 'normal':
         rand_func = np.random.normal
@@ -95,7 +96,7 @@ def build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, add
     Nsyn = {'basal': len(cell.basal_segments)}
     weights = {'basal': [x if x > 0 else 0 for x in rand_func(mu,sigma,size=Nsyn['basal'])]}
     synapses = {}
-    synapses['basal'] = [AMPANMDASynapse(basal_segment['sec'], basal_segment['seg'].x, 0, [w,scaling*w]) \
+    synapses['basal'] = [AMPANMDASynapse(basal_segment['sec'], basal_segment['seg'].x, 0, [w,scaling*w], **synapse_parameters) \
                          for basal_segment,w in zip(cell.basal_segments,weights['basal'])]
     # one synapse in each apical segment that is within slm_border um from the tip of the apical dendrites
     y_coord = np.array([h.y3d(round(h.n3d(sec=segment['sec'])*segment['seg'].x),sec=segment['sec']) \
@@ -104,7 +105,7 @@ def build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, add
     idx, = np.where(y_coord<max_y_coord)
     Nsyn['apical'] = len(idx)
     weights['apical'] = [x if x > 0 else 0 for x in rand_func(mu,sigma,size=Nsyn['apical'])]
-    synapses['apical']  = [AMPANMDASynapse(cell.apical_segments[i]['sec'], cell.apical_segments[i]['seg'].x, 0, [w,scaling*w]) \
+    synapses['apical']  = [AMPANMDASynapse(cell.apical_segments[i]['sec'], cell.apical_segments[i]['seg'].x, 0, [w,scaling*w], **synapse_parameters) \
                            for i,w in zip(idx,weights['apical'])]
 
     return cell,synapses

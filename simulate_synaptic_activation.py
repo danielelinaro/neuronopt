@@ -173,13 +173,13 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
             cnt += 1
 
 
-def simulate_synaptic_activation(swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, \
-                                 distr_name, mean, std, scaling, rate, delay, dur, rnd_seed=None, \
+def simulate_synaptic_activation(swc_file, cell_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell, \
+                                 synapse_parameters, distr_name, mean, std, scaling, rate, delay, dur, rnd_seed=None, \
                                  spikes_file=None, do_plot=False, verbose=False):
 
-    cell,synapses = su.build_cell_with_synapses(swc_file, parameters, mechanisms, replace_axon, \
-                                                add_axon_if_missing, distr_name, \
-                                                mean, std, scaling, slm_border=100.)
+    cell,synapses = su.build_cell_with_synapses(swc_file, cell_parameters, mechanisms, replace_axon, \
+                                                add_axon_if_missing, passive_cell, synapse_parameters, \
+                                                distr_name, mean, std, scaling, slm_border=100.)
 
     recorders,coords,apc = make_recorders(cell, synapses, bifurcation=True, full=False)
 
@@ -210,8 +210,10 @@ def simulate_synaptic_activation(swc_file, parameters, mechanisms, replace_axon,
 def main():
     parser = arg.ArgumentParser(description='Simulate synaptic activation in a neuron model.', prog=progname)
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
-    parser.add_argument('-p','--params-file', type=str, default=None, required=True,
-                        help='JSON file containing the parameters of the model')
+    parser.add_argument('-p','--cell-params', type=str, default=None, required=True,
+                        help='JSON file containing the parameters of the cell')
+    parser.add_argument('-s','--synapse-params', type=str, default=None, required=True,
+                        help='JSON file containing the parameters of the synapses')
     parser.add_argument('-m','--mech-file', type=str, default=None,
                         help='JSON file containing the mechanisms to be inserted into the cell')
     parser.add_argument('-c','--config-file', type=str, default=None,
@@ -221,7 +223,9 @@ def main():
     parser.add_argument('-R','--replace-axon', type=str, default=None,
                         help='whether to replace the axon (accepted values: "yes" or "no")')
     parser.add_argument('-A', '--add-axon-if-missing', type=str, default=None,
-                        help='whether add an axon if the cell does not have one (accepted values: "yes" or "no")')
+                        help='whether to add an axon if the cell does not have one (accepted values: "yes" or "no")')
+    parser.add_argument('--model-type', type=str, default='active',
+                        help='whether to use a passive or active model (accepted values: "active" (default) or "passive")')
     parser.add_argument('--output-dir', type=str, default='.', help='Output directory (default: .)')
     parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
     parser.add_argument('--mean', type=float, help='Mean of the distribution of synaptic weights')
@@ -240,9 +244,15 @@ def main():
         print('{}: {}: no such file.'.format(progname,args.swc_file))
         sys.exit(1)
 
-    if not os.path.isfile(args.params_file):
-        print('{}: {}: no such file.'.format(progname,args.params_file))
+    if not os.path.isfile(args.cell_params):
+        print('{}: {}: no such file.'.format(progname,args.cell_params))
         sys.exit(1)
+    cell_parameters = json.load(open(args.cell_params, 'r'))
+
+    if not os.path.isfile(args.synapse_params):
+        print('{}: {}: no such file.'.format(progname,args.synapse_params))
+        sys.exit(1)
+    synapse_parameters = json.load(open(args.synapse_params, 'r'))
 
     if args.mech_file is not None:
         if not os.path.isfile(args.mech_file):
@@ -257,8 +267,6 @@ def main():
             print('--cell-name must be present with --config-file option.')
             sys.exit(1)
         mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
-
-    parameters = json.load(open(args.params_file,'r'))
 
     if args.spikes_file is not None and not os.path.isfile(args.spikes_file):
         print('{}: {}: no such file.'.format(progname, args.spikes_file))
@@ -299,11 +307,19 @@ def main():
             print('Unknown value for --add-axon-if-missing: "{}".'.format(args.add_axon_if_missing))
             sys.exit(8)
 
-    recorders,coords,synapses = simulate_synaptic_activation(args.swc_file, parameters, mechanisms, \
-                                                             replace_axon, add_axon_if_missing, \
-                                                             args.distr, args.mean, args.std, args.scaling, \
-                                                             args.rate, args.delay, args.dur, args.seed, \
-                                                             args.spikes_file, args.plot, args.verbose)
+    if args.model_type == 'passive':
+        passive_cell = True
+    elif args.model_type == 'active':
+        passive_cell = False
+    else:
+        print('Unknown value for --model-type: "{}". Accepted values are `active` and `passive`.'.format(args.model_type))
+        sys.exit(9)
+
+    recorders,coords,synapses = simulate_synaptic_activation(args.swc_file, cell_parameters, mechanisms, \
+                                                             replace_axon, add_axon_if_missing, passive_cell, \
+                                                             synapse_parameters, args.distr, args.mean, args.std, \
+                                                             args.scaling, args.rate, args.delay, args.dur, \
+                                                             args.seed, args.spikes_file, args.plot, args.verbose)
     
     save_data(recorders,coords,synapses,args)
     
