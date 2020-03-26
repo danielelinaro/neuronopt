@@ -95,7 +95,10 @@ if __name__ == '__main__':
 
     try:
         sim_pars = pickle.load(open(working_dir + '/simulation_parameters.pkl','rb'))
-        print('Found pickle file with simulation parameters in {}.'.format(working_dir))
+        if working_dir == '.':
+            print('Found pickle file with simulation parameters in current directory.')
+        else:
+            print('Found pickle file with simulation parameters in .'.format(working_dir))
     except:
         sim_pars = None
         print('No pickle file with simulation parameters in {}.'.format(working_dir))
@@ -141,9 +144,12 @@ if __name__ == '__main__':
     inverse_last_isi = np.zeros((N,len(I)))
     spike_times = []
 
+    inj_loc = 'soma'
+    inj_dist = 0
+
     for i,individual in enumerate(population):
 
-        worker = lambda Idc: inject_current_step(Idc, delay, dur, args.swc_file, individual, mechanisms,
+        worker = lambda Idc: inject_current_step(Idc, delay, dur, args.swc_file, inj_loc, inj_dist, individual, mechanisms,
                                                  replace_axon=replace_axon, add_axon_if_missing=add_axon_if_missing,
                                                  cell_name=None, neuron=neuron, do_plot=False, verbose=False)
 

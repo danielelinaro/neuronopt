@@ -107,7 +107,7 @@ def make_recorders(cell, h, apical_dst={}, basal_dst={}, mech_vars=None):
             except:
                 pass
 
-    return recorders,gbars
+    return recorders,apc,gbars
 
 
 def run_simulation(tstop, h, verbose=False):
@@ -226,7 +226,7 @@ def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, 
     else:
         raise Exception('current_recordings must be either "CA3" or "CTX"')
 
-    recorders,gbars = make_recorders(cell, h, apical_dst, basal_dst, mech_vars)
+    recorders,apc,gbars = make_recorders(cell, h, apical_dst, basal_dst, mech_vars)
 
     if current_recordings == 'CA3':
         try:
