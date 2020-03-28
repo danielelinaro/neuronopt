@@ -25,7 +25,7 @@ from dlutils import synapse as su
 EVENT_TIME = 500
 AFTER_EVENT = 500
 
-use_scoop = False
+use_scoop = True
 if use_scoop:
     try:
         from scoop import futures
