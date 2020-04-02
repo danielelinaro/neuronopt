@@ -636,31 +636,39 @@ EVENT_TIME = 500
 AFTER_EVENT = 200
 
 
-def cost(x, cell, synapse, ampa_nmda_ratio, amplitude, neuron, return_EPSP=False):
+def cost(x, cell, segment, synapse, ampa_nmda_ratio, amplitude, neuron, return_EPSP_amplitudes=False):
 
     weight = x[0]
     synapse.nc[0].weight[0] = weight
     synapse.nc[1].weight[0] = weight * ampa_nmda_ratio
 
-    recorders = {'t': neuron.h.Vector(), 'V': neuron.h.Vector()}
+    recorders = {'t': neuron.h.Vector(), 'Vsoma': neuron.h.Vector()}
     recorders['t'].record(neuron.h._ref_t)
-    recorders['V'].record(cell.morpho.soma[0](0.5)._ref_v)
+    recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
+    if return_EPSP_amplitudes:
+        recorders['Vdend'] = neuron.h.Vector()
+        recorders['Vdend'].record(segment._ref_v)
     
     neuron.h.tstop = EVENT_TIME + AFTER_EVENT
     neuron.h.run()
 
     t = np.array(recorders['t'])
-    V = np.array(recorders['V'])
+    Vsoma = np.array(recorders['Vsoma'])
     idx, = np.where(t > EVENT_TIME)
-    V0 = V[idx[0] - 10]
+    Vsoma0 = Vsoma[idx[0] - 10]
 
-    if return_EPSP:
-        return np.max(V[idx]) - V0
+    if not return_EPSP_amplitudes:
+        # when used as a cost function
+        return (np.max(Vsoma[idx]) - Vsoma0) - amplitude
 
-    return (np.max(V[idx]) - V0) - amplitude
+    # when used to measure the EPSP amplitude at the soma and at the synapse where the event was localized
+    Vdend = np.array(recorders['Vdend'])
+    Vdend0 = Vdend[idx[0] - 10]
+    return (np.max(Vsoma[idx]) - Vsoma0, np.max(Vdend[idx]) - Vdend0)
 
 
-def worker(segment_index, target, dend_type, ampa_nmda_ratio, swc_file, cell_parameters,
+
+def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_file, cell_parameters,
            synapse_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell):
 
     import neuron
@@ -688,15 +696,15 @@ def worker(segment_index, target, dend_type, ampa_nmda_ratio, swc_file, cell_par
 
     weight_0 = 0.5
     
-    res = least_squares(cost, [weight_0], bounds = (0.01, 10), 
-                        args = (cell, synapse, ampa_nmda_ratio, target, neuron),
+    res = least_squares(cost, [weight_0], bounds = (0.01, max_weight),
+                        args = (cell, segment['seg'], synapse, ampa_nmda_ratio, target, neuron),
                         verbose = 2)
 
-    EPSP_amplitude = cost(res['x'], cell, synapse, ampa_nmda_ratio, target, neuron, return_EPSP=True)
+    EPSP_amplitudes = cost(res['x'], cell, segment['seg'], synapse, ampa_nmda_ratio, target, neuron, return_EPSP_amplitudes=True)
     
     neuron.h('forall delete_section()')
 
-    return res['x'][0], EPSP_amplitude
+    return res['x'][0], EPSP_amplitudes
 
 
 ############################################################
@@ -747,7 +755,9 @@ if __name__ == '__main__':
     parser.add_argument('--output-dir', default='.', type=str, help='output folder')
     parser.add_argument('--serial', action='store_true', help='do not use SCOOP')
     parser.add_argument('--trial-run', action='store_true', help='only optimize 10 basal and 10 apical synapses')
-    
+    parser.add_argument('--max-weight', default=10., type=float, help='maximum value of synaptic weight (default: 10)')
+    parser.add_argument('--quiet', action='store_true', help='do not display plots')
+
     args = parser.parse_args(args=sys.argv[2:])
 
     if args.serial:
@@ -776,6 +786,9 @@ if __name__ == '__main__':
 
     if args.ampa_nmda_ratio < 0:
         raise ValueError('The AMPA/NMDA ratio must be non-negative')
+
+    if args.max_weight < 0:
+        raise ValueError('The maximum synaptic weight must be non-negative')
 
     if not os.path.isfile(args.swc_file):
         print('{}: {}: no such file.'.format(progname,args.swc_file))
@@ -863,6 +876,9 @@ if __name__ == '__main__':
     # the basal and apical compartments
     segments = {'basal': cell.basal_segments, 'apical': cell.apical_segments}
 
+    # the distance of each compartment from the soma
+    distances = {key: np.array([seg['dst'] for seg in segments[key]]) for key in segments}
+
     # pick the compartments where we will place a synapse:
     good_segments = {}
     # all basal compartments
@@ -889,13 +905,10 @@ if __name__ == '__main__':
     else:
         targets = {dend_type: np.random.lognormal(mean=np.log(args.mean), sigma=args.std, size=N_segments[dend_type]) for dend_type in segments}
 
-    # the distances of each compartment from the soma
-    distances = {dend_type: np.array([segments[dend_type][i]['dst'] for i in good_segments[dend_type]]) for dend_type in segments}
-
     # worker functions
-    fun_basal = lambda index, target: worker(index, target, 'basal', args.ampa_nmda_ratio, swc_file, cell_parameters, \
+    fun_basal = lambda index, target: worker(index, target, 'basal', args.max_weight, args.ampa_nmda_ratio, swc_file, cell_parameters, \
                                              synapse_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell)
-    fun_apical = lambda index, target: worker(index, target, 'apical', args.ampa_nmda_ratio, swc_file, cell_parameters, \
+    fun_apical = lambda index, target: worker(index, target, 'apical', args.max_weight, args.ampa_nmda_ratio, swc_file, cell_parameters, \
                                              synapse_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell)
 
     neuron.h('forall delete_section()')
@@ -905,7 +918,11 @@ if __name__ == '__main__':
     apical = list( map_fun(fun_apical, good_segments['apical'], targets['apical']) )
 
     weights = {'basal': np.array([res[0] for res in basal]), 'apical': np.array([res[0] for res in apical])}
-    EPSP_amplitudes = np.concatenate((np.array([res[1] for res in basal]), np.array([res[1] for res in apical])))
+    somatic_EPSP_amplitudes = {'basal':  np.array([res[1][0] for res in basal]),
+                               'apical': np.array([res[1][0] for res in apical])}
+    dendritic_EPSP_amplitudes = {'basal':  np.array([res[1][1] for res in basal]),
+                                 'apical': np.array([res[1][1] for res in apical])}
+    EPSP_amplitudes = np.concatenate(list(somatic_EPSP_amplitudes.values()))
     
     nbins = 30
     hist,edges = np.histogram(EPSP_amplitudes, nbins, density=True)
@@ -928,10 +945,14 @@ if __name__ == '__main__':
     data =  {
         'segments_index': good_segments,
         'weights': weights,
+        'max_weight': args.max_weight,
+        'distances': distances,
+        'EPSP_amplitudes': EPSP_amplitudes,
+        'somatic_EPSP_amplitudes': somatic_EPSP_amplitudes,
+        'dendritic_EPSP_amplitudes': dendritic_EPSP_amplitudes,
         'target_EPSP': targets,
         'mu': args.mean,
         'sigma': args.std,
-        'EPSP_amplitudes': EPSP_amplitudes,
         'swc_file': swc_file,
         'mechanisms': mechanisms,
         'cell_parameters': cell_parameters,
@@ -946,11 +967,14 @@ if __name__ == '__main__':
         'popt': popt
     }
     pickle.dump(data, open(filename, 'wb'))
-    
-    fig,(ax1,ax2) = plt.subplots(1, 2)
-    col = {'basal': [.2,.2,.2], 'apical': [.8,.2,.2]}
-    for dend_type in weights:
-        ax1.plot(distances[dend_type], weights[dend_type], 'o', color=col[dend_type], markersize=4, markerfacecolor='w')
-        ax2.plot(targets[dend_type], weights[dend_type], 'o', color=col[dend_type], markersize=4, markerfacecolor='w')
-    plt.show()
+
+    if not args.quiet:
+        fig,(ax1,ax2) = plt.subplots(1, 2)
+        col = {'basal': [.2,.2,.2], 'apical': [.8,.2,.2]}
+        for dend_type in weights:
+            ax1.plot(distances[dend_type][good_segments[dend_type]], weights[dend_type], 'o',
+                     color=col[dend_type], markersize=4, markerfacecolor='w')
+            ax2.plot(targets[dend_type], weights[dend_type], 'o',
+                     color=col[dend_type], markersize=4, markerfacecolor='w')
+        plt.show()
 
