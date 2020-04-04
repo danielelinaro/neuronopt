@@ -58,16 +58,16 @@ class AMPANMDASynapse (Synapse):
 
 
 class GABAASynapse (Synapse):
-    def __init__(self, sec, x, E, weight, delay=1.):
+    def __init__(self, sec, x, E, weight, delay=1., **kwargs):
         Synapse.__init__(self, sec, x, weight, delay)
 
         self.gaba_a_syn.Erev = E
-        self.gaba_a_syn.kon = 5.397
-        self.gaba_a_syn.koff = 4.433
-        self.gaba_a_syn.CC = 20.945
-        self.gaba_a_syn.CO = 1.233
-        self.gaba_a_syn.Beta = 283.09
-        self.gaba_a_syn.Alpha = 254.52
+        self.gaba_a_syn.kon = kwargs['kon'] if 'kon' in kwargs else 5.397
+        self.gaba_a_syn.koff = kwargs['koff'] if 'koff' in kwargs else 4.433
+        self.gaba_a_syn.CC = kwargs['CC'] if 'CC' in kwargs else 20.945
+        self.gaba_a_syn.CO = kwargs['CO'] if 'CO' in kwargs else 1.233
+        self.gaba_a_syn.Beta = kwargs['Beta'] if 'Beta' in kwargs else 283.09
+        self.gaba_a_syn.Alpha = kwargs['Alpha'] if 'Alpha' in kwargs else 254.52
         self.gaba_a_syn.gmax = 0.000603
 
     def make_synapse(self, sec, x):

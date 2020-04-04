@@ -636,19 +636,23 @@ EVENT_TIME = 500
 AFTER_EVENT = 200
 
 
-def cost(x, cell, segment, synapse, ampa_nmda_ratio, amplitude, neuron, return_EPSP_amplitudes=False):
+def cost(x, cell, segment, synapse, ampa_nmda_ratio, amplitude, neuron, return_PSP_amplitudes=False):
 
     weight = x[0]
-    synapse.nc[0].weight[0] = weight
-    synapse.nc[1].weight[0] = weight * ampa_nmda_ratio
+    if ampa_nmda_ratio >= 0:
+        synapse.nc[0].weight[0] = weight
+        synapse.nc[1].weight[0] = weight * ampa_nmda_ratio
+    else:
+        synapse.nc.weight[0] = weight
 
     recorders = {'t': neuron.h.Vector(), 'Vsoma': neuron.h.Vector()}
     recorders['t'].record(neuron.h._ref_t)
     recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
-    if return_EPSP_amplitudes:
+    if return_PSP_amplitudes:
         recorders['Vdend'] = neuron.h.Vector()
         recorders['Vdend'].record(segment._ref_v)
     
+    neuron.h.v_init = -60
     neuron.h.tstop = EVENT_TIME + AFTER_EVENT
     neuron.h.run()
 
@@ -657,15 +661,16 @@ def cost(x, cell, segment, synapse, ampa_nmda_ratio, amplitude, neuron, return_E
     idx, = np.where(t > EVENT_TIME)
     Vsoma0 = Vsoma[idx[0] - 10]
 
-    if not return_EPSP_amplitudes:
+    peak = np.max if amplitude > 0 else np.min
+
+    if not return_PSP_amplitudes:
         # when used as a cost function
-        return (np.max(Vsoma[idx]) - Vsoma0) - amplitude
+        return (peak(Vsoma[idx]) - Vsoma0) - amplitude
 
     # when used to measure the EPSP amplitude at the soma and at the synapse where the event was localized
     Vdend = np.array(recorders['Vdend'])
     Vdend0 = Vdend[idx[0] - 10]
-    return (np.max(Vsoma[idx]) - Vsoma0, np.max(Vdend[idx]) - Vdend0)
-
+    return (peak(Vsoma[idx]) - Vsoma0, peak(Vdend[idx]) - Vdend0)
 
 
 def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_file, cell_parameters,
@@ -679,7 +684,6 @@ def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_fi
         raise Exception('Unknown dendrite type: "{}"'.format(dend_type))
 
     neuron.h.load_file('stdrun.hoc')
-    neuron.h.v_init = -66
     neuron.h.cvode_active(1)
 
     cell = cu.Cell('CA3_cell_{}_{}'.format(dend_type, segment_index),
@@ -691,20 +695,26 @@ def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_fi
     else:
         segment = cell.apical_segments[segment_index]
 
-    synapse = su.AMPANMDASynapse(segment['sec'], segment['seg'].x, 0, [0, 0], **synapse_parameters)
+    if ampa_nmda_ratio >= 0:
+        synapse = su.AMPANMDASynapse(segment['sec'], segment['seg'].x, 0, [0, 0], **synapse_parameters)
+        weight_0 = 0.5
+    else:
+        synapse = su.GABAASynapse(segment['sec'], segment['seg'].x, -73, 0, **synapse_parameters)
+        weight_0 = 5
+
     synapse.set_presynaptic_spike_times([EVENT_TIME])
 
-    weight_0 = 0.5
     
     res = least_squares(cost, [weight_0], bounds = (0.01, max_weight),
                         args = (cell, segment['seg'], synapse, ampa_nmda_ratio, target, neuron),
                         verbose = 2)
 
-    EPSP_amplitudes = cost(res['x'], cell, segment['seg'], synapse, ampa_nmda_ratio, target, neuron, return_EPSP_amplitudes=True)
+    PSP_amplitudes = cost(res['x'], cell, segment['seg'], synapse, ampa_nmda_ratio, target,
+                          neuron, return_PSP_amplitudes=True)
     
     neuron.h('forall delete_section()')
 
-    return res['x'][0], EPSP_amplitudes
+    return res['x'][0], PSP_amplitudes
 
 
 ############################################################
@@ -734,8 +744,10 @@ if __name__ == '__main__':
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-p','--cell-params', type=str, default=None, required=True,
                         help='JSON file containing the parameters of the cell')
-    parser.add_argument('-s','--synapse-params', type=str, default=None, required=True,
-                        help='JSON file containing the parameters of the synapses')
+    parser.add_argument('--exc-syn-pars', type=str, default=None,
+                        help='JSON file containing the parameters of the excitatory synapses')
+    parser.add_argument('--inh-syn-pars', type=str, default=None,
+                        help='JSON file containing the parameters of the inhibitory synapses')
     parser.add_argument('-m','--mech-file', type=str, default=None,
                         help='JSON file containing the mechanisms to be inserted into the cell')
     parser.add_argument('-c','--config-file', type=str, default=None,
@@ -748,15 +760,20 @@ if __name__ == '__main__':
                         help='whether to add an axon if the cell does not have one (accepted values: "yes" or "no")')
     parser.add_argument('--model-type', type=str, default='active',
                         help='whether to use a passive or active model (accepted values: "active" (default) or "passive")')
-    parser.add_argument('--mean', default=None, type=float, help='mean of the distribution of EPSPs')
-    parser.add_argument('--std', default=None, type=float, help='standard deviation of the distribution of EPSPs')
-    parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
+    parser.add_argument('--exc-mean', default=None, type=float, help='mean of the distribution of EPSPs')
+    parser.add_argument('--exc-std', default=None, type=float, help='standard deviation of the distribution of EPSPs')
+    parser.add_argument('--exc-distr', default='normal', type=str,
+                        help='type of EPSP distribution (accepted values are normal or lognormal)')
     parser.add_argument('--ampa-nmda-ratio', default=1., type=float, help='AMPA/NMDA ratio')
+    parser.add_argument('--max-exc-weight', default=10., type=float, help='maximum value of excitatory weight (default: 10)')
+    parser.add_argument('--inh-mean', default=None, type=float, help='mean of the distribution of IPSPs')
+    parser.add_argument('--inh-std', default=None, type=float, help='standard deviation of the distribution of IPSPs')
+    parser.add_argument('--inh-distr', default='normal', type=str,
+                        help='type of IPSP distribution (accepted values are normal or lognormal)')
+    parser.add_argument('--max-inh-weight', default=100., type=float, help='maximum value of inhibitory weight (default: 100)')
     parser.add_argument('--output-dir', default='.', type=str, help='output folder')
     parser.add_argument('--serial', action='store_true', help='do not use SCOOP')
     parser.add_argument('--trial-run', action='store_true', help='only optimize 10 basal and 10 apical synapses')
-    parser.add_argument('--max-weight', default=10., type=float, help='maximum value of synaptic weight (default: 10)')
-    parser.add_argument('--quiet', action='store_true', help='do not display plots')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -772,24 +789,8 @@ if __name__ == '__main__':
 
     from dlutils import utils
 
-    if args.mean is None:
-        raise ValueError('You must specify the mean of the distribution of synaptic weights')
-
-    if args.std is None:
-        raise ValueError('You must specify the standard deviation of the distribution of synaptic weights')
-
-    if args.std < 0:
-        raise ValueError('The standard deviation of the distribution of synaptic weights must be non-negative')
-
-    if not args.distr in ('normal','lognormal'):
-        raise ValueError('The distribution of synaptic weights must either be "normal" or "lognormal"')
-
-    if args.ampa_nmda_ratio < 0:
-        raise ValueError('The AMPA/NMDA ratio must be non-negative')
-
-    if args.max_weight < 0:
-        raise ValueError('The maximum synaptic weight must be non-negative')
-
+    ########## DEFINITION OF MODEL CELL
+    
     if not os.path.isfile(args.swc_file):
         print('{}: {}: no such file.'.format(progname,args.swc_file))
         sys.exit(1)
@@ -798,11 +799,6 @@ if __name__ == '__main__':
         print('{}: {}: no such file.'.format(progname,args.cell_params))
         sys.exit(1)
     cell_parameters = json.load(open(args.cell_params, 'r'))
-
-    if not os.path.isfile(args.synapse_params):
-        print('{}: {}: no such file.'.format(progname,args.synapse_params))
-        sys.exit(1)
-    synapse_parameters = json.load(open(args.synapse_params, 'r'))
 
     if args.mech_file is not None:
         if not os.path.isfile(args.mech_file):
@@ -863,6 +859,65 @@ if __name__ == '__main__':
         print('Unknown value for --model-type: "{}". Accepted values are `active` and `passive`.'.format(args.model_type))
         sys.exit(9)
 
+
+    ########## WHAT TO OPTIMIZE
+    
+    optimize_excitatory_weights = False
+    optimize_inhibitory_weights = False
+    if args.exc_syn_pars is not None:
+        optimize_excitatory_weights = True
+    if args.inh_syn_pars is not None:
+        optimize_inhibitory_weights = True
+
+    if not optimize_excitatory_weights and not optimize_inhibitory_weights:
+        print('At least one of --exc-syn-pars and --inh-syn-pars must be specified.')
+        sys.exit(1)
+
+    if optimize_excitatory_weights:
+
+        if not os.path.isfile(args.exc_syn_pars):
+            print('{}: {}: no such file.'.format(progname,args.exc_syn_pars))
+            sys.exit(1)
+        excitatory_synapse_parameters = json.load(open(args.exc_syn_pars, 'r'))
+        excitatory_synapse_parameters['AMPA'].pop('weight')
+
+        if not args.exc_distr in ('normal','lognormal'):
+            raise ValueError('The EPSP distribution must be either "normal" or "lognormal"')
+
+        if args.exc_mean is None or args.exc_mean <= 0:
+            raise ValueError('The mean of the EPSP distribution must be > 0')
+
+        if args.exc_std is None or args.exc_std < 0:
+            raise ValueError('The standard deviation of the EPSP distribution must be non-negative')
+
+        if args.ampa_nmda_ratio < 0:
+            raise ValueError('The AMPA/NMDA ratio must be non-negative')
+
+        if args.max_exc_weight <= 0:
+            raise ValueError('The maximum excitatory synaptic weight must be > 0')
+
+    if optimize_inhibitory_weights:
+
+        if not os.path.isfile(args.inh_syn_pars):
+            print('{}: {}: no such file.'.format(progname,args.inh_syn_pars))
+            sys.exit(1)
+        tmp = json.load(open(args.inh_syn_pars, 'r'))
+        tmp['GABAA'].pop('weight')
+        inhibitory_synapse_parameters = tmp['GABAA']
+
+        if not args.inh_distr in ('normal','lognormal'):
+            raise ValueError('The IPSP distribution must be either "normal" or "lognormal"')
+
+        if args.inh_mean is None or args.inh_mean >= 0:
+            raise ValueError('The mean of the IPSP distribution must be negative')
+
+        if args.inh_std is None or args.inh_std < 0:
+            raise ValueError('The standard deviation of the IPSP distribution must be non-negative')
+
+        if args.max_inh_weight <= 0:
+            raise ValueError('The maximum inhibitory synaptic weight must be > 0')
+
+
     import neuron
     from dlutils import cell as cu
 
@@ -879,102 +934,145 @@ if __name__ == '__main__':
     # the distance of each compartment from the soma
     distances = {key: np.array([seg['dst'] for seg in segments[key]]) for key in segments}
 
-    # pick the compartments where we will place a synapse:
+    # the compartments where we will place a synapse
     good_segments = {}
-    # all basal compartments
-    good_segments['basal'] = np.arange(len(segments['basal']))
-    # do not insert synapses into the apical dendrites that are in SLM: these are the segments that lie within slm_border
-    # microns from the distal tip of the dendrites. also, we will not consider those apical branches that have a diameter
-    # smaller than 0.5 microns
-    slm_border = 100.
-    y_coord = np.array([seg['center'][1] for seg in segments['apical']])
-    y_limit = np.max(y_coord) - slm_border
-    good_segments['apical'] = np.array([i for i,seg in enumerate(segments['apical'])
-                                        if (seg['seg'].diam > 0.5 and seg['center'][1] <= y_limit)])
-
-    if args.trial_run:
-        N = 10
-        good_segments = {dend_type: np.random.choice(good_segments[dend_type], size=N, replace=False) for dend_type in segments}
-
+    # target EPSPs and IPSPs
+    targets = {}
     # the number of segments for each dendrite
-    N_segments = {k: len(v) for k,v in good_segments.items()}
+    N_segments = {}
 
-    # the target EPSP amplitudes
-    if args.distr == 'normal':
-        targets = {dend_type: np.random.normal(loc=args.mean, scale=args.std, size=N_segments[dend_type]) for dend_type in segments}
-    else:
-        targets = {dend_type: np.random.lognormal(mean=np.log(args.mean), sigma=args.std, size=N_segments[dend_type]) for dend_type in segments}
+    ########## EXCITATORY EPSPs
+    if optimize_excitatory_weights:
+        good_segments['EPSP'] = {}
+        # all basal compartments
+        good_segments['EPSP']['basal'] = np.arange(len(segments['basal']))
+        # do not insert synapses into the apical dendrites that are in SLM: these are the segments that lie within slm_border
+        # microns from the distal tip of the dendrites. also, we will not consider those apical branches that have a diameter
+        # smaller than 0.5 microns
+        slm_border = 100.
+        y_coord = np.array([seg['center'][1] for seg in segments['apical']])
+        y_limit = np.max(y_coord) - slm_border
+        good_segments['EPSP']['apical'] = np.array([i for i,seg in enumerate(segments['apical'])
+                                                    if (seg['seg'].diam > 0.5 and seg['center'][1] <= y_limit)])
+        if args.trial_run:
+            N = {dend_type: np.min([2, len(good_segments['EPSP'][dend_type])]) for dend_type in segments}
+            good_segments['EPSP'] = {dend_type: np.random.choice(good_segments['EPSP'][dend_type], size=N[dend_type], replace=False)
+                                     for dend_type in segments}
 
-    # worker functions
-    fun_basal = lambda index, target: worker(index, target, 'basal', args.max_weight, args.ampa_nmda_ratio, swc_file, cell_parameters, \
-                                             synapse_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell)
-    fun_apical = lambda index, target: worker(index, target, 'apical', args.max_weight, args.ampa_nmda_ratio, swc_file, cell_parameters, \
-                                             synapse_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell)
+        N_segments['EPSP'] = {k: len(v) for k,v in good_segments['EPSP'].items()}
+
+        if args.exc_distr == 'normal':
+            targets['EPSP'] = {dend_type: np.random.normal(loc=args.exc_mean, scale=args.exc_std, size=N_segments['EPSP'][dend_type])
+                               for dend_type in segments}
+        else:
+            targets['EPSP'] = {dend_type: np.random.lognormal(mean=np.log(args.exc_mean), sigma=args.exc_std, size=N_segments['EPSP'][dend_type])
+                               for dend_type in segments}
+
+        # worker functions
+        fun_basal_EPSP = lambda index, target: worker(index, target, 'basal', args.max_exc_weight, args.ampa_nmda_ratio,
+                                                      swc_file, cell_parameters, excitatory_synapse_parameters, mechanisms,
+                                                      replace_axon, add_axon_if_missing, passive_cell)
+        fun_apical_EPSP = lambda index, target: worker(index, target, 'apical', args.max_exc_weight, args.ampa_nmda_ratio,
+                                                       swc_file, cell_parameters, excitatory_synapse_parameters, mechanisms,
+                                                       replace_axon, add_axon_if_missing, passive_cell)
+
+    ########## INHIBITORY EPSPs
+    if optimize_inhibitory_weights:
+        good_segments['IPSP'] = {}
+        # inhibitory synapses on basal segments that are within 25 um from the soma
+        good_segments['IPSP']['basal'] = np.array([i for i,seg in enumerate(segments['basal']) if seg['dst'] < 25])
+        # and on the first two apical sections
+        good_segments['IPSP']['apical'] = np.array([i for i,seg in enumerate(segments['apical']) if seg['sec']
+                                                    in (cell.morpho.apic[0], cell.morpho.apic[1])])
+        if args.trial_run:
+            N = {dend_type: np.min([2, len(good_segments['IPSP'][dend_type])]) for dend_type in segments}
+            good_segments['IPSP'] = {dend_type: np.random.choice(good_segments['IPSP'][dend_type], size=N[dend_type], replace=False)
+                                     for dend_type in segments}
+
+        N_segments['IPSP'] = {k: len(v) for k,v in good_segments['IPSP'].items()}
+
+        if args.inh_distr == 'normal':
+            targets['IPSP'] = {dend_type: np.random.normal(loc=args.inh_mean, scale=args.inh_std, size=N_segments['IPSP'][dend_type])
+                               for dend_type in segments}
+        else:
+            targets['IPSP'] = {dend_type: np.random.lognormal(loc=np.log(args.mean), scale=args.inh_std, size=N_segments['IPSP'][dend_type])
+                               for dend_type in segments}
+
+
+        fun_basal_IPSP = lambda index, target: worker(index, target, 'basal', args.max_inh_weight, -1, swc_file, cell_parameters,
+                                                      inhibitory_synapse_parameters, mechanisms, replace_axon,
+                                                      add_axon_if_missing, passive_cell)
+        fun_apical_IPSP = lambda index, target: worker(index, target, 'apical', args.max_inh_weight, -1, swc_file, cell_parameters,
+                                                       inhibitory_synapse_parameters, mechanisms, replace_axon,
+                                                       add_axon_if_missing, passive_cell)
 
     neuron.h('forall delete_section()')
 
+    basal = {}
+    apical = {}
+
     # run the optimizations
-    basal = list( map_fun(fun_basal, good_segments['basal'], targets['basal']) )
-    apical = list( map_fun(fun_apical, good_segments['apical'], targets['apical']) )
+    if optimize_excitatory_weights:
+        basal['EPSP'] = list( map_fun(fun_basal_EPSP, good_segments['EPSP']['basal'], targets['EPSP']['basal']) )
+        apical['EPSP'] = list( map_fun(fun_apical_EPSP, good_segments['EPSP']['apical'], targets['EPSP']['apical']) )
 
-    weights = {'basal': np.array([res[0] for res in basal]), 'apical': np.array([res[0] for res in apical])}
-    somatic_EPSP_amplitudes = {'basal':  np.array([res[1][0] for res in basal]),
-                               'apical': np.array([res[1][0] for res in apical])}
-    dendritic_EPSP_amplitudes = {'basal':  np.array([res[1][1] for res in basal]),
-                                 'apical': np.array([res[1][1] for res in apical])}
-    EPSP_amplitudes = np.concatenate(list(somatic_EPSP_amplitudes.values()))
+    if optimize_inhibitory_weights:
+        basal['IPSP'] = list( map_fun(fun_basal_IPSP, good_segments['IPSP']['basal'], targets['IPSP']['basal']) )
+        apical['IPSP'] = list( map_fun(fun_apical_IPSP, good_segments['IPSP']['apical'], targets['IPSP']['apical']) )
+
+    weights = {psp: {'basal': np.array([res[0] for res in basal[psp]]), 'apical': np.array([res[0] for res in apical[psp]])}
+               for psp in basal}
     
-    nbins = 30
-    hist,edges = np.histogram(EPSP_amplitudes, nbins, density=True)
-    binwidth = np.diff(edges[:2])[0]
-    x = edges[:-1] + binwidth/2
-
-    # fit the distribution of EPSPs amplitudes
-    if args.distr == 'normal':
-        p0 = [np.mean(EPSP_amplitudes), np.std(EPSP_amplitudes)]
-        popt,pcov = curve_fit(normal, x, hist, p0)
-    else:
-        p0 = [np.mean(np.log(EPSP_amplitudes)), np.std(np.log(EPSP_amplitudes))]
-        popt,pcov = curve_fit(lognormal, x, hist, p0)
-
+    somatic_PSP_amplitudes = {psp: {'basal':  np.array([res[1][0] for res in basal[psp]]),
+                                    'apical': np.array([res[1][0] for res in apical[psp]])}
+                              for psp in basal}
+    dendritic_PSP_amplitudes = {psp: {'basal':  np.array([res[1][1] for res in basal[psp]]),
+                                      'apical': np.array([res[1][1] for res in apical[psp]])}
+                                for psp in basal}
+    PSP_amplitudes = {psp: np.concatenate(list(somatic_PSP_amplitudes[psp].values())) for psp in basal}
+    
     # save everything
     now = time.localtime(time.time())
-    filename = args.output_dir + '/EPSP_amplitudes_mu={:.3f}_sigma={:.3f}_{}{:02d}{:02d}_{:02d}{:02d}{:02d}.pkl' \
-                   .format(args.mean, args.std, now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
+    filename = args.output_dir + '/synaptic_weights_{}{:02d}{:02d}_{:02d}{:02d}{:02d}.pkl' \
+                   .format(now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
+
+    max_weights = {}
+    weights_mean = {}
+    weights_std = {}
+    weights_distr = {}
+    synapse_parameters = {}
+
+    if optimize_excitatory_weights:
+        max_weights['EPSP'] = args.max_exc_weight
+        weights_mean['EPSP'] = args.exc_mean
+        weights_std['EPSP'] = args.exc_std
+        weights_distr['EPSP'] = args.exc_distr
+        synapse_parameters['EPSP'] = excitatory_synapse_parameters
+    if optimize_inhibitory_weights:
+        max_weights['IPSP'] = args.max_inh_weight
+        weights_mean['IPSP'] = args.inh_mean
+        weights_std['IPSP'] = args.inh_std
+        weights_distr['IPSP'] = args.inh_distr
+        synapse_parameters['IPSP'] = inhibitory_synapse_parameters
 
     data =  {
         'segments_index': good_segments,
         'weights': weights,
-        'max_weight': args.max_weight,
+        'max_weights': max_weights,
         'distances': distances,
-        'EPSP_amplitudes': EPSP_amplitudes,
-        'somatic_EPSP_amplitudes': somatic_EPSP_amplitudes,
-        'dendritic_EPSP_amplitudes': dendritic_EPSP_amplitudes,
-        'target_EPSP': targets,
-        'mu': args.mean,
-        'sigma': args.std,
+        'PSP_amplitudes': PSP_amplitudes,
+        'somatic_PSP_amplitudes': somatic_PSP_amplitudes,
+        'dendritic_PSP_amplitudes': dendritic_PSP_amplitudes,
+        'target_PSPs': targets,
+        'weight_mean': weights_mean,
+        'weights_std': weights_std,
+        'weights_distr': weights_distr,
         'swc_file': swc_file,
         'mechanisms': mechanisms,
         'cell_parameters': cell_parameters,
         'synapse_parameters': synapse_parameters,
-        'distr_name': args.distr,
-        'scaling': args.ampa_nmda_ratio,
         'ampa_nmda_ratio': args.ampa_nmda_ratio,
         'slm_border': slm_border,
-        'hist': hist,
-        'binwidth': binwidth,
-        'edges': edges,
-        'popt': popt
     }
     pickle.dump(data, open(filename, 'wb'))
-
-    if not args.quiet:
-        fig,(ax1,ax2) = plt.subplots(1, 2)
-        col = {'basal': [.2,.2,.2], 'apical': [.8,.2,.2]}
-        for dend_type in weights:
-            ax1.plot(distances[dend_type][good_segments[dend_type]], weights[dend_type], 'o',
-                     color=col[dend_type], markersize=4, markerfacecolor='w')
-            ax2.plot(targets[dend_type], weights[dend_type], 'o',
-                     color=col[dend_type], markersize=4, markerfacecolor='w')
-        plt.show()
 
