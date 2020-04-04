@@ -768,8 +768,6 @@ if __name__ == '__main__':
     parser.add_argument('--max-exc-weight', default=10., type=float, help='maximum value of excitatory weight (default: 10)')
     parser.add_argument('--inh-mean', default=None, type=float, help='mean of the distribution of IPSPs')
     parser.add_argument('--inh-std', default=None, type=float, help='standard deviation of the distribution of IPSPs')
-    parser.add_argument('--inh-distr', default='normal', type=str,
-                        help='type of IPSP distribution (accepted values are normal or lognormal)')
     parser.add_argument('--max-inh-weight', default=100., type=float, help='maximum value of inhibitory weight (default: 100)')
     parser.add_argument('--output-dir', default='.', type=str, help='output folder')
     parser.add_argument('--serial', action='store_true', help='do not use SCOOP')
@@ -905,11 +903,8 @@ if __name__ == '__main__':
         tmp['GABAA'].pop('weight')
         inhibitory_synapse_parameters = tmp['GABAA']
 
-        if not args.inh_distr in ('normal','lognormal'):
-            raise ValueError('The IPSP distribution must be either "normal" or "lognormal"')
-
         if args.inh_mean is None or args.inh_mean >= 0:
-            raise ValueError('The mean of the IPSP distribution must be negative')
+            raise ValueError('The mean of the IPSP distribution must be < 0')
 
         if args.inh_std is None or args.inh_std < 0:
             raise ValueError('The standard deviation of the IPSP distribution must be non-negative')
@@ -941,6 +936,8 @@ if __name__ == '__main__':
     # the number of segments for each dendrite
     N_segments = {}
 
+    slm_border = 100.
+
     ########## EXCITATORY EPSPs
     if optimize_excitatory_weights:
         good_segments['EPSP'] = {}
@@ -949,13 +946,12 @@ if __name__ == '__main__':
         # do not insert synapses into the apical dendrites that are in SLM: these are the segments that lie within slm_border
         # microns from the distal tip of the dendrites. also, we will not consider those apical branches that have a diameter
         # smaller than 0.5 microns
-        slm_border = 100.
         y_coord = np.array([seg['center'][1] for seg in segments['apical']])
         y_limit = np.max(y_coord) - slm_border
         good_segments['EPSP']['apical'] = np.array([i for i,seg in enumerate(segments['apical'])
                                                     if (seg['seg'].diam > 0.5 and seg['center'][1] <= y_limit)])
         if args.trial_run:
-            N = {dend_type: np.min([2, len(good_segments['EPSP'][dend_type])]) for dend_type in segments}
+            N = {dend_type: np.min([10, len(good_segments['EPSP'][dend_type])]) for dend_type in segments}
             good_segments['EPSP'] = {dend_type: np.random.choice(good_segments['EPSP'][dend_type], size=N[dend_type], replace=False)
                                      for dend_type in segments}
 
@@ -985,19 +981,14 @@ if __name__ == '__main__':
         good_segments['IPSP']['apical'] = np.array([i for i,seg in enumerate(segments['apical']) if seg['sec']
                                                     in (cell.morpho.apic[0], cell.morpho.apic[1])])
         if args.trial_run:
-            N = {dend_type: np.min([2, len(good_segments['IPSP'][dend_type])]) for dend_type in segments}
+            N = {dend_type: np.min([10, len(good_segments['IPSP'][dend_type])]) for dend_type in segments}
             good_segments['IPSP'] = {dend_type: np.random.choice(good_segments['IPSP'][dend_type], size=N[dend_type], replace=False)
                                      for dend_type in segments}
 
         N_segments['IPSP'] = {k: len(v) for k,v in good_segments['IPSP'].items()}
 
-        if args.inh_distr == 'normal':
-            targets['IPSP'] = {dend_type: np.random.normal(loc=args.inh_mean, scale=args.inh_std, size=N_segments['IPSP'][dend_type])
-                               for dend_type in segments}
-        else:
-            targets['IPSP'] = {dend_type: np.random.lognormal(loc=np.log(args.mean), scale=args.inh_std, size=N_segments['IPSP'][dend_type])
-                               for dend_type in segments}
-
+        targets['IPSP'] = {dend_type: np.random.normal(loc=args.inh_mean, scale=args.inh_std, size=N_segments['IPSP'][dend_type])
+                           for dend_type in segments}
 
         fun_basal_IPSP = lambda index, target: worker(index, target, 'basal', args.max_inh_weight, -1, swc_file, cell_parameters,
                                                       inhibitory_synapse_parameters, mechanisms, replace_axon,
@@ -1052,7 +1043,7 @@ if __name__ == '__main__':
         max_weights['IPSP'] = args.max_inh_weight
         weights_mean['IPSP'] = args.inh_mean
         weights_std['IPSP'] = args.inh_std
-        weights_distr['IPSP'] = args.inh_distr
+        weights_distr['IPSP'] = 'normal'
         synapse_parameters['IPSP'] = inhibitory_synapse_parameters
 
     data =  {
