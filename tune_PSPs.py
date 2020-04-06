@@ -90,7 +90,7 @@ def cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window
     return np.max(v) - np.max(v_psp)
 
 
-def fit_PSP_preamble(mode, data_files):
+def fit_PSP_preamble(mode):
     from dlutils import utils
     from dlutils import cell as cu
 
@@ -117,6 +117,11 @@ def fit_PSP_preamble(mode, data_files):
     parser.add_argument('-f','--force', action='store_true', help='force overwrite of existing output file')
     parser.add_argument('-q','--quiet', action='store_true', help='do not show plots')
     parser.add_argument('-w','--weight-only', action='store_true', help='optimize only weight, not synapse parameters')
+
+    parser.add_argument('--ctrl-file', type=str, required=True, help='CTRL data file')
+    if mode == 'excitatory':
+        parser.add_argument('--ttx-file', type=str, required=True, help='TTX data file')
+
     parser.add_argument('segment', type=str, default='basal[0]', nargs='?', action='store',
                         help='Segment where the synapse will be placed (default: basal(0))')
     
@@ -129,6 +134,13 @@ def fit_PSP_preamble(mode, data_files):
     if not os.path.isfile(args.params_file):
         print('{}: {}: no such file.'.format(progname,args.params_file))
         sys.exit(1)
+
+    data_files = {'CTRL': args.ctrl_file}
+    if mode == 'excitatory':
+        data_files['TTX'] = args.ttx_file
+    for v in data_files.values():
+        if not os.path.isfile(v):
+            print('{}: {}: no such file.'.format(v))
 
     if args.model_type == 'passive':
         passive = True
@@ -303,11 +315,8 @@ def fit_EPSP():
     import neuron
     from dlutils import synapse as su
 
-    data_files = {'CTRL': '/Users/daniele/Postdoc/Research/Janelia/in_vitro_data/EPSPs/EPSP_RS_CTRL.pkl', \
-                  'TTX': '/Users/daniele/Postdoc/Research/Janelia/in_vitro_data/EPSPs/EPSP_RS_TTX.pkl'}
-
     cell, seg, output_file, tau_rise, tau_decay, amplitude, \
-        parameters, optimize_only_weight, quiet = fit_PSP_preamble('excitatory', data_files)
+        parameters, optimize_only_weight, quiet = fit_PSP_preamble('excitatory')
 
     delay = 1
     t_event = 700
@@ -464,10 +473,8 @@ def fit_IPSP():
     import neuron
     from dlutils import synapse as su
 
-    data_files = {'CTRL': '/Users/daniele/Postdoc/Research/Janelia/in_vitro_data/IPSPs/IPSP_RS_CTRL.pkl'}
-
     cell, seg, output_file, tau_rise, tau_decay, amplitude, \
-        parameters, optimize_only_weight, quiet = fit_PSP_preamble('inhibitory', data_files)
+        parameters, optimize_only_weight, quiet = fit_PSP_preamble('inhibitory')
 
     delay = 1
     t_event = 700
