@@ -19,9 +19,11 @@ import argparse as arg
 from collections import OrderedDict
 
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit, least_squares, minimize
 
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.rc('font', size=8)
 
 # the name of this script
 progname = os.path.basename(sys.argv[0])
@@ -42,7 +44,7 @@ default_synapse_parameters = {
 }
 
 
-def cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window, synapse_type='excitatory', do_plot=False):
+def cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window, synapse_type='excitatory', ax=None):
     from scipy.interpolate import interp1d
     from dlutils.numerics import double_exp
 
@@ -74,12 +76,25 @@ def cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window
         v = -v
         v_psp = -v_psp
 
-    if do_plot:
-        fig,(ax1,ax2) = plt.subplots(1,2,figsize=(8,4))
-        ax1.plot(rec['t'], rec['Vsoma'], 'k', lw=1)
-        ax2.plot(t + t_event, v, 'k', lw=1)
-        ax2.plot(t + t_event, v_psp, 'r', lw=1)
-        plt.show()
+    if ax is not None:
+        T = np.array(rec['t'])
+        V = np.array(rec['Vsoma'])
+        idx, = np.where(T > t_event - 50)
+        ax[0].plot(T[idx] - t_event, V[idx], color=[.4,.4,.4], label='Soma', lw=1)
+        if 'Vsyn' in rec:
+            V = np.array(rec['Vsyn'])
+            ax[0].plot(T[idx] - t_event, V[idx], color=[1,.5,0], label='Dendrite', lw=1)
+        ax[0].legend(loc='best')
+        ax[0].set_xlabel('Time from stim (ms)')
+        ax[0].set_ylabel(r'$V_m$ (mV)')
+        ax[1].plot(t, v_psp, 'r', lw=2, label='Experiment')
+        ax[1].plot(t, v, 'k', lw=1, label='Model')
+        ax[1].legend(loc='best')
+        ax[1].set_xlabel('Time from stim (ms)')
+        if amplitude is None:
+            ax[1].set_ylabel(r'Normalized $V_m$')
+        else:
+            ax[1].set_ylabel(r'$V_m$ (mV)')
 
     if amplitude is None:
         return v - v_psp
@@ -259,12 +274,38 @@ def fit_PSP_preamble(mode):
     return cell, segment, output_file, tau_rise, tau_decay, amplitude, parameters, args.weight_only, args.quiet
 
 
+def make_axes(n_rows, n_cols=2):
+    x_offset = 0.15
+    x_spacing = 0.125
+    y_spacing = 0.125
+    x_bound = 0.03
+    if n_rows == 1:
+        y_offset = 0.25
+        y_bound = 0.05
+    else:
+        y_offset = 0.125
+        y_bound = 0.03
+    ax_width = (1 - x_offset - (n_cols-1) * x_spacing - x_bound) / n_cols
+    ax_height = (1 - y_offset - (n_rows-1) * y_spacing - y_bound) / n_rows
+    if n_rows == 1:
+        return [
+            [plt.axes([x_offset, y_offset, ax_width, ax_height]),
+             plt.axes([x_offset+x_spacing+ax_width, y_offset, ax_width, ax_height])]
+        ]
+    return [
+        [plt.axes([x_offset, y_offset+y_spacing+ax_height, ax_width, ax_height]),
+         plt.axes([x_offset+x_spacing+ax_width, y_offset+y_spacing+ax_height, ax_width, ax_height])],
+        [plt.axes([x_offset, y_offset, ax_width, ax_height]),
+         plt.axes([x_offset+x_spacing+ax_width, y_offset, ax_width, ax_height])]
+    ]
+
+
 ############################################################
 ###                       FIT-EPSP                       ###
 ############################################################
 
 
-def cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay, t_event, neuron, rec, window, do_plot=False):
+def cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay, t_event, neuron, rec, window, ax=None):
     tau_rise = EPSP_parameters['tau_rise']
     tau_decay = EPSP_parameters['tau_decay']
     amplitude = EPSP_parameters['amplitude'] if 'amplitude' in EPSP_parameters else None
@@ -308,12 +349,15 @@ def cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay, t_even
     # NMDA
     synapse.nc[1].weight[0] = weight * ampa_nmda_ratio
 
-    return cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window, 'excitatory', do_plot)
+    return cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window, 'excitatory', ax)
 
 
 def fit_EPSP():
     import neuron
     from dlutils import synapse as su
+
+    height = 2
+    width = 2.5 * height
 
     cell, seg, output_file, tau_rise, tau_decay, amplitude, \
         parameters, optimize_only_weight, quiet = fit_PSP_preamble('excitatory')
@@ -331,7 +375,7 @@ def fit_EPSP():
     rec['Vsyn'].record(seg['seg']._ref_v)
 
     neuron.h.load_file('stdrun.hoc')
-    neuron.h.v_init = -66
+    neuron.h.v_init = -60
     neuron.h.cvode_active(1)
 
     optim = {}
@@ -366,15 +410,20 @@ def fit_EPSP():
     if not optimize_only_weight:
         func = lambda x: np.sqrt(np.sum(cost_fit_EPSP(x, synapse, synapse_parameters,
                                                       EPSP_parameters, delay, t_event, neuron,
-                                                      rec, window, False) ** 2))
+                                                      rec, window, None) ** 2))
         optim['TTX']['MIN'] = minimize(func, AMPA_parameters_0, bounds = [v for v in bounds_dict['AMPA'].values()],
                                        options = {'maxiter': 100, 'disp': True})
-        if not quiet:
-            cost_fit_EPSP(optim['TTX']['MIN']['x'], synapse, synapse_parameters, EPSP_parameters,
-                          delay, t_event, neuron, rec, window, do_plot=True)
+
         AMPA_parameters = optim['TTX']['MIN']['x']
+
+        fig = plt.figure(figsize=(width, height*2))
+        ax = make_axes(n_rows=2)
+        cost_fit_EPSP(optim['TTX']['MIN']['x'], synapse, synapse_parameters, EPSP_parameters,
+                      delay, t_event, neuron, rec, window, ax[0])
     else:
         AMPA_parameters = AMPA_parameters_0
+        fig = plt.figure(figsize=(width, height))
+        ax = make_axes(n_rows=1)
 
     synapse_parameters['AMPA'] = AMPA_parameters
     synapse_parameters.pop('to_optimize')
@@ -383,11 +432,13 @@ def fit_EPSP():
     EPSP_parameters['amplitude'] = amplitude['TTX']
     optim['TTX']['LS'] = least_squares(cost_fit_EPSP, [weight_0], bounds = (0.1, 20.0), \
                                        args = (synapse, synapse_parameters, EPSP_parameters, delay, t_event, \
-                                               neuron, rec, window, False), verbose=2)
+                                               neuron, rec, window, None), verbose=2)
 
-    if not quiet:
-        cost_fit_EPSP(optim['TTX']['LS']['x'], synapse, synapse_parameters, EPSP_parameters, \
-                      delay, t_event, neuron, rec, window, do_plot=True)
+    cost_fit_EPSP(optim['TTX']['LS']['x'], synapse, synapse_parameters, EPSP_parameters, \
+                  delay, t_event, neuron, rec, window, ax[-1])
+
+    pdf_filename = os.path.splitext(output_file.replace('NMDA_',''))[0] + '.pdf'
+    plt.savefig(pdf_filename)
 
     NMDA_parameters_0 = [parameters['NMDA'][name] for name in synapse_parameter_names]
     weight_0 = 1
@@ -404,15 +455,20 @@ def fit_EPSP():
 
     if not optimize_only_weight:
         func = lambda x: np.sqrt(np.sum(cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay,
-                                                      t_event, neuron, rec, window, False) ** 2))
+                                                      t_event, neuron, rec, window, None) ** 2))
         optim['CTRL']['MIN'] = minimize(func, NMDA_parameters_0, bounds = [v for v in bounds_dict['NMDA'].values()],
                                         options = {'maxiter': 100, 'disp': True})
-        if not quiet:
-            cost_fit_EPSP(optim['CTRL']['MIN']['x'], synapse, synapse_parameters, EPSP_parameters, \
-                          delay, t_event, neuron, rec, window, do_plot=True)
+
         NMDA_parameters = optim['CTRL']['MIN']['x']
+
+        fig = plt.figure(figsize=(width, height*2))
+        ax = make_axes(n_rows=2)
+        cost_fit_EPSP(optim['CTRL']['MIN']['x'], synapse, synapse_parameters, EPSP_parameters, \
+                      delay, t_event, neuron, rec, window, ax[0])
     else:
         NMDA_parameters = NMDA_parameters_0
+        fig = plt.figure(figsize=(width, height))
+        ax = make_axes(n_rows=1)
 
     synapse_parameters['NMDA'] = NMDA_parameters
     synapse_parameters.pop('to_optimize')
@@ -422,11 +478,13 @@ def fit_EPSP():
 
     optim['CTRL']['LS'] = least_squares(cost_fit_EPSP, [weight_0], bounds = (0.1, 20.0), \
                                         args = (synapse, synapse_parameters, EPSP_parameters, delay, t_event, \
-                                                neuron, rec, window, False), verbose=2)
+                                                neuron, rec, window, None), verbose=2)
 
-    if not quiet:
-        cost_fit_EPSP(optim['CTRL']['LS']['x'], synapse, synapse_parameters, EPSP_parameters, \
-                      delay, t_event, neuron, rec, window, do_plot=True)
+    cost_fit_EPSP(optim['CTRL']['LS']['x'], synapse, synapse_parameters, EPSP_parameters, \
+                  delay, t_event, neuron, rec, window, ax[-1])
+
+    pdf_filename = os.path.splitext(output_file.replace('AMPA_',''))[0] + '.pdf'
+    plt.savefig(pdf_filename)
 
     parameters = {'AMPA_NMDA_ratio': synapse_parameters['ampa_nmda_ratio']}
     for syn_type in ('AMPA','NMDA'):
@@ -436,13 +494,16 @@ def fit_EPSP():
     parameters['AMPA']['weight'] = optim['CTRL']['LS']['x'][0]
     json.dump(parameters, open(output_file, 'w'), indent=4)
 
+    if not quiet:
+        plt.show()
+
 
 ############################################################
 ###                       FIT-IPSP                       ###
 ############################################################
 
 
-def cost_fit_IPSP(x, synapse, synapse_parameters, IPSP_parameters, delay, t_event, neuron, rec, window, do_plot=False):
+def cost_fit_IPSP(x, synapse, synapse_parameters, IPSP_parameters, delay, t_event, neuron, rec, window, ax=None):
     tau_rise = IPSP_parameters['tau_rise']
     tau_decay = IPSP_parameters['tau_decay']
     amplitude = IPSP_parameters['amplitude'] if 'amplitude' in IPSP_parameters else None
@@ -466,12 +527,15 @@ def cost_fit_IPSP(x, synapse, synapse_parameters, IPSP_parameters, delay, t_even
     # synaptic weight:
     synapse.nc.weight[0] = weight
 
-    return cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window, 'inhibitory', do_plot)
+    return cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window, 'inhibitory', ax)
 
 
 def fit_IPSP():
     import neuron
     from dlutils import synapse as su
+
+    height = 2
+    width = 2.5 * height
 
     cell, seg, output_file, tau_rise, tau_decay, amplitude, \
         parameters, optimize_only_weight, quiet = fit_PSP_preamble('inhibitory')
@@ -489,7 +553,7 @@ def fit_IPSP():
     rec['Vsyn'].record(seg['seg']._ref_v)
 
     neuron.h.load_file('stdrun.hoc')
-    neuron.h.v_init = -66
+    neuron.h.v_init = -60
     neuron.h.cvode_active(1)
 
     optim = {}
@@ -514,15 +578,21 @@ def fit_IPSP():
 
     if not optimize_only_weight:
         func = lambda x: np.sqrt(np.sum(cost_fit_IPSP(x, synapse, synapse_parameters, IPSP_parameters,
-                                                      delay, t_event, neuron, rec, window, False) ** 2))
+                                                      delay, t_event, neuron, rec, window, None) ** 2))
         optim['CTRL']['MIN'] = minimize(func, GABAA_parameters_0, bounds = [v for v in bounds_dict['GABAA'].values()],
                                         options = {'maxiter': 100, 'disp': True})
-        if not quiet:
-            cost_fit_IPSP(optim['CTRL']['MIN']['x'], synapse, synapse_parameters, IPSP_parameters, delay,
-                          t_event, neuron, rec, window, do_plot=True)
+
         GABAA_parameters = optim['CTRL']['MIN']['x']
+
+        fig = plt.figure(figsize=(width, height*2))
+        ax = make_axes(n_rows=2)
+        cost_fit_IPSP(optim['CTRL']['MIN']['x'], synapse, synapse_parameters, IPSP_parameters, delay,
+                      t_event, neuron, rec, window, ax[0])
     else:
         GABAA_parameters = GABAA_parameters_0
+
+        fig = plt.figure(figsize=(width, height))
+        ax = make_axes(n_rows=1)
 
     synapse_parameters['GABAA'] = GABAA_parameters
     synapse_parameters.pop('weight')
@@ -530,11 +600,13 @@ def fit_IPSP():
     IPSP_parameters['amplitude'] = amplitude['CTRL']
     optim['CTRL']['LS'] = least_squares(cost_fit_IPSP, [weight_0], bounds = (0.1, 100.0), \
                                         args = (synapse, synapse_parameters, IPSP_parameters, delay, t_event, \
-                                                neuron, rec, window, False), verbose=2)
+                                                neuron, rec, window, None), verbose=2)
 
-    if not quiet:
-        cost_fit_IPSP(optim['CTRL']['LS']['x'], synapse, synapse_parameters, IPSP_parameters, \
-                      delay, t_event, neuron, rec, window, do_plot=True)
+    cost_fit_IPSP(optim['CTRL']['LS']['x'], synapse, synapse_parameters, IPSP_parameters, \
+                  delay, t_event, neuron, rec, window, ax[-1])
+
+    pdf_filename = os.path.splitext(output_file)[0] + '.pdf'
+    plt.savefig(pdf_filename)
 
     parameters = {'GABAA': {name: synapse_parameters['GABAA'][i] for i,name in enumerate(synapse_parameter_names)}}
     parameters['GABAA']['weight'] = optim['CTRL']['LS']['x'][0]
