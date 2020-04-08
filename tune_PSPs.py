@@ -554,8 +554,9 @@ lognormal = lambda x,m,s: 1./ (s * x * np.sqrt(2 * np.pi)) * np.exp(-(np.log(x) 
 def plot():
     parser = arg.ArgumentParser(description='Plot the results of the simulation',
                                 prog=progname+' plot')
-    parser.add_argument('pkl_file', type=str, action='store', help='Data file')
+    parser.add_argument('pkl_file', type=str, action='store', help='data file')
     parser.add_argument('-o', '--output', default=None, type=str, help='output file name')
+    parser.add_argument('-s', '--show', action='store_true', help='show plot')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -564,49 +565,120 @@ def plot():
         print('{}: {}: no such file.'.format(progname,f_in))
         sys.exit(0)
 
+    f_out = args.output
+
     data = pickle.load(open(f_in,'rb'))
 
     from dlutils import graphics
     graphics.set_rc_defaults()
 
-    fix = False
-    if fix:
-        nbins = 100
-        data['EPSP_amplitudes'] = data['EPSP_amplitudes'][data['EPSP_amplitudes'] < 10]
-        data['hist'],data['edges'] = np.histogram(data['EPSP_amplitudes'],nbins,density=True)
-        data['binwidth'] = np.diff(data['edges'][:2])[0]
-        x = data['edges'][:-1] + data['binwidth']/2
-        if data['distr_name'] == 'normal':
-            p0 = [np.mean(data['EPSP_amplitudes']),np.std(data['EPSP_amplitudes'])]
-            data['popt'],pcov = curve_fit(normal,x,data['hist'],p0)
-        else:
-            p0 = [np.mean(np.log(data['EPSP_amplitudes'])),np.std(np.log(data['EPSP_amplitudes']))]
-            data['popt'],pcov = curve_fit(lognormal,x,data['hist'],p0)
-        pickle.dump(data,open(f_in,'wb'))
+    ms = 3
+    col = {'apical': [.8,0,0], 'basal': [.3,.3,.3]}
+    fig_width = 8
+    fig_height = 6
 
-    if args.output is None:
-        f_out = f_in.split('.pkl')[0] + '.pdf'
-    else:
-        f_out = args.output
+    n_bins = 20
 
-    x = data['edges'][:-1] + data['binwidth']/2
-    fig = plt.figure(figsize=(4,3))
-    ax = plt.axes([0.15,0.175,0.8,0.725])
-    ax.bar(x, data['hist'], width=data['binwidth'], facecolor='k', edgecolor='w')
-    if data['distr_name'] == 'normal':
-        ax.plot(data['edges'],normal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
-    else:
-        ax.plot(data['edges'],lognormal(data['edges'],data['popt'][0],data['popt'][1]),'r',lw=2)
-    ax.set_xlabel('EPSP amplitude (mV)')
-    ax.set_ylabel('PDF')
-    if 'mu' in data:
-        m = data['mu']
-        s = data['sigma']
-    else:
-        m = data['mean']
-        s = data['std']
-    ax.set_title('mu,sigma = {},{}'.format(m,s))
-    plt.savefig(f_out)
+    # a bunch of parameters for the location of the axes
+    x_offset = 0.075
+    y_offset = 0.1
+    hist_height = 0.12
+    hist_width = hist_height * fig_height / fig_width
+    width_left = 0.4
+    height_left = 0.7
+    top = y_offset + hist_height * 1.2 + height_left
+    spacing = 0.1
+    height_right = (top - y_offset - 2*spacing) / 3
+    width_right = 1 - (x_offset + hist_width * 1.2 + width_left + spacing + 0.025)
+
+    for key in data['weights']:
+
+        fig = plt.figure(figsize=(fig_width, fig_height))
+        if args.output is None:
+            fname = os.path.splitext(f_in)[0]
+            timestamp = '_'.join([s for s in fname.split('_') if s.isdigit()])
+            prefix = fname.split(timestamp)[0][:-1]
+            timestamp = ''.join(timestamp.split('_'))
+            f_out = '{}_{}_mean={:.1f}_std={:.1f}_{}.pdf'.format(
+                prefix, key, data['weights_mean'][key], data['weights_std'][key], timestamp)
+
+        ax = [
+            plt.axes([x_offset + hist_width * 1.2, y_offset + hist_height * 1.2, width_left, height_left]),
+            plt.axes([x_offset + hist_width * 1.2, y_offset, width_left, hist_height]),
+            plt.axes([x_offset, y_offset + hist_height * 1.2, hist_width, height_left]),
+            plt.axes([x_offset + hist_width * 1.2 + width_left + spacing,
+                      y_offset + 2 * (height_right + spacing),
+                      width_right,
+                      height_right]),
+            plt.axes([x_offset + hist_width * 1.2 + width_left + spacing,
+                      y_offset + height_right + spacing,
+                      width_right,
+                      height_right]),
+            plt.axes([x_offset + hist_width * 1.2 + width_left + spacing,
+                      y_offset,
+                      width_right,
+                      height_right])
+        ]
+
+        dend_types = data['weights'][key].keys()
+        for dend_type in dend_types:
+            X = data['somatic_PSP_amplitudes'][key][dend_type]
+            Y = data['dendritic_PSP_amplitudes'][key][dend_type]
+
+            scale = 1.025
+            for x,y,w in zip(X, Y, data['weights'][key][dend_type]):
+                if y > 20:
+                    ax[0].plot([x, x*scale], [y, y*scale], linewidth=0.5, color=col[dend_type])
+                    ax[0].text(x*scale, y*scale, '{:.1f}'.format(w), fontsize=6, color=col[dend_type],
+                               horizontalalignment='left', verticalalignment='bottom')
+
+            ax[0].plot(X, Y, 'o', color=col[dend_type], linewidth=1,
+                       markerfacecolor='w', markersize=ms, label=dend_type)
+            ax[0].set_xticklabels([])
+            ax[0].set_yticklabels([])
+            ax[0].set_title('mu = {} mV - sigma = {} mV'.format(data['weights_mean'][key], data['weights_std'][key]))
+
+            hist,edges = np.histogram(data['somatic_PSP_amplitudes'][key][dend_type], bins=n_bins)
+            dx = np.diff(edges[:2])
+            ax[1].bar(edges[:-1], hist, width=0.7*dx, align='edge', color=col[dend_type])
+            ax[1].set_xlim(ax[0].get_xlim())
+            ax[1].set_xlabel('Somatic {} amplitudes (mV)'.format(key))
+
+            hist,edges = np.histogram(data['dendritic_PSP_amplitudes'][key][dend_type], bins=n_bins)
+            dy = np.diff(edges[:2])
+            ax[2].barh(edges[:-1], hist, height=0.7*dy, align='edge', color=col[dend_type])
+            ax[2].set_ylim(ax[0].get_ylim())
+            ax[2].set_ylabel('Dendritic {} amplitudes (mV)'.format(key))
+
+            max_weight = data['max_weights'][key]
+            delta = max_weight * 0.05
+            lim = [-delta, max_weight+delta]
+            X = data['distances'][dend_type][data['segments_index'][key][dend_type]]
+            Y = data['weights'][key][dend_type]
+            ax[3].plot(X, Y, 'o', color=col[dend_type], linewidth=1, markerfacecolor='w', markersize=ms, label=dend_type)
+            ax[3].set_xlabel(r'Distance from soma ($\mu$m)')
+            ax[3].set_ylabel('Synaptic weight')
+            ax[3].set_ylim(lim)
+            ax[3].legend(loc='best')
+
+            X = Y
+            Y = data['somatic_PSP_amplitudes'][key][dend_type]
+            ax[4].plot(X, Y, 'o', color=col[dend_type], linewidth=1, markerfacecolor='w', markersize=ms)
+            ax[4].set_xlabel('Synaptic weight')
+            ax[4].set_ylabel('s{} ampl (mV)'.format(key))
+            ax[4].set_xlim(ax[3].get_ylim())
+
+            Y = data['dendritic_PSP_amplitudes'][key][dend_type]
+            ax[5].plot(X, Y, 'o', color=col[dend_type], linewidth=1, markerfacecolor='w', markersize=ms)
+            ax[5].set_xlabel('Synaptic weight')
+            ax[5].set_ylabel('d{} ampl (mV)'.format(key))
+            ax[5].set_xlim(ax[3].get_ylim())
+
+        plt.savefig(f_out)
+
+    if args.show:
+        plt.show()
+
 
 
 ############################################################
@@ -1062,7 +1134,7 @@ if __name__ == '__main__':
         'somatic_PSP_amplitudes': somatic_PSP_amplitudes,
         'dendritic_PSP_amplitudes': dendritic_PSP_amplitudes,
         'target_PSPs': targets,
-        'weight_mean': weights_mean,
+        'weights_mean': weights_mean,
         'weights_std': weights_std,
         'weights_distr': weights_distr,
         'swc_file': swc_file,
