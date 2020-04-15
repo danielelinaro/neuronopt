@@ -710,13 +710,13 @@ def plot():
             ax[0].set_yticklabels([])
             ax[0].set_title('mu = {} mV - sigma = {} mV'.format(data['weights_mean'][key], data['weights_std'][key]))
 
-            hist,edges = np.histogram(data['somatic_PSP_amplitudes'][key][dend_type], bins=n_bins)
+            hist,edges = np.histogram(X, bins=n_bins)
             dx = np.diff(edges[:2])
             ax[1].bar(edges[:-1], hist, width=0.7*dx, align='edge', color=col[dend_type])
             ax[1].set_xlim(ax[0].get_xlim())
             ax[1].set_xlabel('Somatic {} amplitudes (mV)'.format(key))
 
-            hist,edges = np.histogram(data['dendritic_PSP_amplitudes'][key][dend_type], bins=n_bins)
+            hist,edges = np.histogram(Y, bins=n_bins)
             dy = np.diff(edges[:2])
             ax[2].barh(edges[:-1], hist, height=0.7*dy, align='edge', color=col[dend_type])
             ax[2].set_ylim(ax[0].get_ylim())
@@ -779,6 +779,7 @@ def help():
 ###                     TUNE-WEIGHTS                     ###
 ############################################################
 
+DEBUG = False
 
 # time of an incoming spike used to tune synaptic weights
 EVENT_TIME = 500
@@ -799,7 +800,7 @@ def cost(x, cell, segment, synapse, ampa_nmda_ratio, amplitude, neuron, return_P
     recorders = {'t': neuron.h.Vector(), 'Vsoma': neuron.h.Vector()}
     recorders['t'].record(neuron.h._ref_t)
     recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
-    if return_PSP_amplitudes:
+    if return_PSP_amplitudes or DEBUG:
         recorders['Vdend'] = neuron.h.Vector()
         recorders['Vdend'].record(segment._ref_v)
     
@@ -814,6 +815,30 @@ def cost(x, cell, segment, synapse, ampa_nmda_ratio, amplitude, neuron, return_P
 
     peak = np.max if amplitude > 0 else np.min
 
+    if peak(Vsoma[idx]) > 0:
+        print('The cell spiked.')
+        if DEBUG:
+            Vdend = np.array(recorders['Vdend'])
+            plt.plot(t[idx], Vsoma[idx], 'k', lw=1)
+            plt.plot(t[idx], Vdend[idx], 'r', lw=1)
+
+            weight = x[0] / 2
+            synapse.nc[0].weight[0] = weight
+            synapse.nc[1].weight[0] = weight * ampa_nmda_ratio
+
+            neuron.h.v_init = Vsoma[idx[0] - 10]
+            neuron.h.t = 0
+            neuron.h.run()
+
+            t = np.array(recorders['t'])
+            Vsoma = np.array(recorders['Vsoma'])
+            idx, = np.where(t > EVENT_TIME)
+            Vsoma0 = Vsoma[idx[0] - 10]
+            Vdend = np.array(recorders['Vdend'])
+            plt.plot(t[idx], Vsoma[idx], 'g', lw=1)
+            plt.plot(t[idx], Vdend[idx], 'b', lw=1)
+            plt.show()
+
     if not return_PSP_amplitudes:
         # when used as a cost function
         return (peak(Vsoma[idx]) - Vsoma0) - amplitude
@@ -821,6 +846,12 @@ def cost(x, cell, segment, synapse, ampa_nmda_ratio, amplitude, neuron, return_P
     # when used to measure the EPSP amplitude at the soma and at the synapse where the event was localized
     Vdend = np.array(recorders['Vdend'])
     Vdend0 = Vdend[idx[0] - 10]
+
+    if DEBUG:
+        plt.plot(t[idx], Vsoma[idx], 'k')
+        plt.plot(t[idx], Vdend[idx], 'r')
+        plt.show()
+
     return (peak(Vsoma[idx]) - Vsoma0, peak(Vdend[idx]) - Vdend0)
 
 
@@ -848,7 +879,7 @@ def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_fi
 
     if ampa_nmda_ratio >= 0:
         synapse = su.AMPANMDASynapse(segment['sec'], segment['seg'].x, 0, [0, 0], **synapse_parameters)
-        weight_0 = 0.5
+        weight_0 = 0.1
     else:
         synapse = su.GABAASynapse(segment['sec'], segment['seg'].x, -73, 0, **synapse_parameters)
         weight_0 = 5
@@ -909,6 +940,8 @@ if __name__ == '__main__':
                         help='whether to replace the axon (accepted values: "yes" or "no")')
     parser.add_argument('-A', '--add-axon-if-missing', type=str, default=None,
                         help='whether to add an axon if the cell does not have one (accepted values: "yes" or "no")')
+    parser.add_argument('--min-basal-diam', default=0.5, type=float, help='minimum basal segments diameter (default 0.5 um)')
+    parser.add_argument('--min-apical-diam', default=0.5, type=float, help='minimum apical segments diameter (default 0.5 um)')
     parser.add_argument('--model-type', type=str, default='active',
                         help='whether to use a passive or active model (accepted values: "active" (default) or "passive")')
     parser.add_argument('--exc-mean', default=None, type=float, help='mean of the distribution of EPSPs')
@@ -1092,15 +1125,19 @@ if __name__ == '__main__':
     ########## EXCITATORY EPSPs
     if optimize_excitatory_weights:
         good_segments['EPSP'] = {}
-        # all basal compartments
-        good_segments['EPSP']['basal'] = np.arange(len(segments['basal']))
+        # only take those basal compartments that have a diameter greater than args.min_basal_diam
+        good_segments['EPSP']['basal'] = np.array([i for i,seg in enumerate(segments['basal']) if seg['seg'].diam >= args.min_basal_diam])
+        print('{} out of {} basal segments have a diameter greater than {} um.'.format(
+            len(good_segments['EPSP']['basal']), len(segments['basal']), args.min_basal_diam))
         # do not insert synapses into the apical dendrites that are in SLM: these are the segments that lie within slm_border
-        # microns from the distal tip of the dendrites. also, we will not consider those apical branches that have a diameter
-        # smaller than 0.5 microns
+        # microns from the distal tip of the dendrites.
+        # additionally, only take those apical branches that have a diameter greater than args.min_apical_diam
         y_coord = np.array([seg['center'][1] for seg in segments['apical']])
         y_limit = np.max(y_coord) - slm_border
         good_segments['EPSP']['apical'] = np.array([i for i,seg in enumerate(segments['apical'])
-                                                    if (seg['seg'].diam > 0.5 and seg['center'][1] <= y_limit)])
+                                                    if (seg['seg'].diam >= args.min_apical_diam and seg['center'][1] <= y_limit)])
+        print('{} out of {} apicl segments are within the SLM boundary and have a diameter greater than {} um.'.format(
+            len(good_segments['EPSP']['apical']), len(segments['apical']), args.min_apical_diam))
         if args.trial_run:
             N = {dend_type: np.min([10, len(good_segments['EPSP'][dend_type])]) for dend_type in segments}
             good_segments['EPSP'] = {dend_type: np.random.choice(good_segments['EPSP'][dend_type], size=N[dend_type], replace=False)
@@ -1127,7 +1164,7 @@ if __name__ == '__main__':
     if optimize_inhibitory_weights:
         good_segments['IPSP'] = {}
         # inhibitory synapses on basal segments that are within 25 um from the soma
-        good_segments['IPSP']['basal'] = np.array([i for i,seg in enumerate(segments['basal']) if seg['dst'] < 25])
+        good_segments['IPSP']['basal'] = np.array([i for i,seg in enumerate(segments['basal']) if seg['dst'] <= 25])
         # and on the first two apical sections
         good_segments['IPSP']['apical'] = np.array([i for i,seg in enumerate(segments['apical']) if seg['sec']
                                                     in (cell.morpho.apic[0], cell.morpho.apic[1])])
