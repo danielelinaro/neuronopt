@@ -1136,7 +1136,7 @@ if __name__ == '__main__':
         y_limit = np.max(y_coord) - slm_border
         good_segments['EPSP']['apical'] = np.array([i for i,seg in enumerate(segments['apical'])
                                                     if (seg['seg'].diam >= args.min_apical_diam and seg['center'][1] <= y_limit)])
-        print('{} out of {} apicl segments are within the SLM boundary and have a diameter greater than {} um.'.format(
+        print('{} out of {} apical segments are within the SLM boundary and have a diameter greater than {} um.'.format(
             len(good_segments['EPSP']['apical']), len(segments['apical']), args.min_apical_diam))
         if args.trial_run:
             N = {dend_type: np.min([10, len(good_segments['EPSP'][dend_type])]) for dend_type in segments}
