@@ -98,7 +98,7 @@ if __name__ == '__main__':
         if working_dir == '.':
             print('Found pickle file with simulation parameters in current directory.')
         else:
-            print('Found pickle file with simulation parameters in .'.format(working_dir))
+            print('Found pickle file with simulation parameters in {}.'.format(working_dir))
     except:
         sim_pars = None
         print('No pickle file with simulation parameters in {}.'.format(working_dir))

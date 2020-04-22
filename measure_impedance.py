@@ -10,12 +10,11 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
-import neuron
-import dlutils.cell as cu
-from dlutils import utils
-from dlutils.utils import individuals_from_pickle
-
 import btmorph
+
+import neuron
+from dlutils.cell import Cell
+from dlutils.utils import individuals_from_pickle, extract_mechanisms
 
 neuron.h.load_file('stdrun.hoc')
 neuron.h.cvode_active(1)
@@ -60,7 +59,7 @@ def worker(segment_num, segment_group, stim_pars, swc_file, parameters, mechanis
 
     cell_name = '{}_{:03d}_{}'.format(segment_group, segment_num, cell_id)
 
-    cell = cu.Cell(cell_name, swc_file, parameters, mechanisms)
+    cell = Cell(cell_name, swc_file, parameters, mechanisms)
     cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
     if segment_group == 'soma':
@@ -230,7 +229,7 @@ if __name__ == '__main__':
         if args.cell_name is None:
             print('--cell-name must be present with --config-file option.')
             sys.exit(1)
-        mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
+        mechanisms = extract_mechanisms(args.config_file, args.cell_name)
         cell_name = args.cell_name
 
     if '*' in args.params_files:
@@ -251,15 +250,21 @@ if __name__ == '__main__':
         population = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
         working_dir = os.path.split(args.pickle_file)[0]
 
+    if working_dir == '':
+        working_dir = '.'
+
     if cell_name[-1] == '_':
         cell_name = cell_name[:-1]
 
     try:
-        sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
-        print('Loaded optimization parameters.')
+        sim_pars = pickle.load(open(working_dir + '/simulation_parameters.pkl','rb'))
+        if working_dir == '.':
+            print('Found pickle file with simulation parameters in current directory.')
+        else:
+            print('Found pickle file with simulation parameters in {}.'.format(working_dir))
     except:
         sim_pars = None
-        print('Could not find a file containing optimization parameters.')
+        print('No pickle file with simulation parameters in {}.'.format(working_dir))
 
     if args.replace_axon == None:
         if sim_pars is None:
@@ -304,7 +309,7 @@ if __name__ == '__main__':
 
 
     for i,parameters in enumerate(population):
-        cell = cu.Cell('CA3_cell_{}'.format(i), swc_file, parameters, mechanisms)
+        cell = Cell('CA3_cell_{}'.format(i), swc_file, parameters, mechanisms)
         cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
         R = {'soma': np.array([measure_impedance(cell, cell.somatic_segments[0]['seg'], stim_pars)])}
