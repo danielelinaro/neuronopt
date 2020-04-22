@@ -18,6 +18,10 @@ import btmorph
 neuron.h.load_file('stdrun.hoc')
 neuron.h.cvode_active(1)
 
+# the name of this script
+progname = os.path.basename(sys.argv[0])
+
+
 def measure_impedance(cell, segment, stim_pars):
 
     recorders = {}
@@ -85,15 +89,15 @@ def plot_morpho(data, use_log=False, n_levels=64):
     y_lim[0] -= (y_lim[1]-y_lim[0]) * 0.05
     y_lim[1] += (y_lim[1]-y_lim[0]) * 0.05
 
-    x_width = 0.7
+    x_width = 0.4
     y_width = 0.9
 
     x_size = (x_lim[1] - x_lim[0]) / 100
     y_size = (y_lim[1] - y_lim[0]) / 100
     x_size *= (y_width / x_width)
 
-    fig = plt.figure(figsize=(x_size,y_size))
-    ax = plt.axes([0.05, 0.05, x_width, y_width])
+    fig = plt.figure(figsize=(x_size, y_size))
+    ax1 = plt.axes([0.05, 0.05, x_width, y_width])
 
     X = np.concatenate(list(data['centers'].values()))
     R = np.concatenate(list(data['R'].values()))
@@ -109,7 +113,9 @@ def plot_morpho(data, use_log=False, n_levels=64):
     if use_log:
         norm = colors.LogNorm(vmin = R_min, vmax = R_max)
     else:
-        norm = colors.LinearNorm(vmin = R_min, vmax = R_max)
+        norm = colors.Normalize(vmin = R_min, vmax = R_max)
+
+    ticks = np.concatenate([[R_min], np.arange(500, R_max+1, 500)])
 
     levels = np.linspace(R_min, R_max, n_levels)
 
@@ -118,16 +124,58 @@ def plot_morpho(data, use_log=False, n_levels=64):
     plt.contourf([[0,0], [0,0]], levels, norm=norm, cmap=cm.jet)
     btmorph.plot_2D_SWC(data['swc_file'], color_fun=lambda pt: cm.jet(interp(pt))[0][:3], new_fig=False,
                         filter=[1,3,4], tight=True, align=True)
-    plt.colorbar(fraction=0.1, shrink=0.7, aspect=30)
+    cbar = plt.colorbar(fraction=0.1, shrink=0.7, aspect=30, ticks=ticks)
+    cbar.set_label(r'Impedance (M$\Omega$)')
+    cbar.ax.set_yticklabels(ticks)
+
+    ax2 = plt.axes([0.6, 0.1, 0.35, 0.35])
+    ax3 = plt.axes([0.6, 0.6, 0.35, 0.35])
+
+    X = np.concatenate(list(data['areas'].values()))
+    ax2.plot(X[1:], R[1:], 'ko', markerfacecolor='w', linewidth=1, markersize=4)
+    ax2.set_xlabel(r'Area ($\mu$m$^2$)')
+    ax2.set_ylabel(r'Impedance (M$\Omega$)')
+    X = np.concatenate(list(data['diameters'].values()))
+    ax3.plot(X[1:], R[1:], 'ko', markerfacecolor='w', linewidth=1, markersize=4)
+    ax3.set_xlabel(r'Diameter ($\mu$m)')
+    ax3.set_ylabel(r'Impedance (M$\Omega$)')
+
+
+def plot(*args, **kwargs):
+
+    if len(args) == 0:
+        parser = arg.ArgumentParser(description='Plot results of an impedance measurement experiment')
+        parser.add_argument('file', type=str, action='store', help='pickle file containing the results of the experiment')
+        parser.add_argument('--log', action='store_true', help='print log of data')
+
+        args = parser.parse_args(args=sys.argv[2:])
+        pkl_file = args.file
+        use_log = args.log
+    else:
+        pkl_file = args[0]
+        try:
+            use_log = kwargs['use_log']
+        except:
+            use_log = False
+
+    if not os.path.isfile(pkl_file):
+        print('{}: {}: no such file.'.format(progname, pkl_file))
+        return
+
+    data = pickle.load(open(pkl_file, 'rb'))
+    plot_morpho(data, use_log)
+    pdf_file = os.path.splitext(pkl_file)[0]
+    if use_log:
+        pdf_file += '_log.pdf'
+    else:
+        pdf_file += '_linear.pdf'
+    plt.savefig(pdf_file)
 
 
 if __name__ == '__main__':
 
     if sys.argv[1] == 'plot':
-        outfile = sys.argv[2]
-        data = pickle.load(open(outfile, 'rb'))
-        plot_morpho(data, use_log=True)
-        plt.savefig(os.path.splitext(outfile)[0] + '.pdf')
+        plot()
         sys.exit(0)
     
     parser = arg.ArgumentParser(description='Measure the impedance of each compartment in a neuron model.')
@@ -275,7 +323,9 @@ if __name__ == '__main__':
         centers[dend_type] = centers[dend_type][idx[dend_type],:]
         diameters[dend_type] = diameters[dend_type][idx[dend_type]]
         areas[dend_type] = areas[dend_type][idx[dend_type]]
-        fun = lambda num: worker(num, dend_type, stim_pars, swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell)
+        fun = lambda num: worker(num, dend_type, stim_pars, swc_file, parameters,
+                                 mechanisms, replace_axon, add_axon_if_missing,
+                                 passive_cell)
         R[dend_type] = np.array(list(map_fun(fun, idx[dend_type])))
 
     data = {
@@ -289,13 +339,25 @@ if __name__ == '__main__':
         'stim_delay': args.delay,
         'stim_dur': args.dur,
         'stim_amp': args.I * 1e-3,
-        'segment_indexes': idx
+        'segment_indexes': idx,
+        'parameters': parameters,
+        'mechanisms': mechanisms,
+        'replace_axon': replace_axon,
+        'add_axon_if_missing': add_axon_if_missing,
+        'cell_name': cell_name,
+        'passive_cell': passive_cell,
+        'params_file': args.params_file
     }
 
-    outfile = cell_name + '_impedance_' + args.model_type
-    pickle.dump(data, open(outfile + '.pkl', 'wb'))
+    if args.config_file is not None:
+        data['config_file'] = args.config_file
+    else:
+        data['mech_file'] = args.mech_file
 
-    plot_morpho(data, use_log=True)
+    outfile = cell_name + '_impedance_' + os.path.splitext(args.params_file)[0] + '_' + args.model_type + '.pkl'
+    pickle.dump(data, open(outfile, 'wb'))
 
-    plt.savefig(outfile + '.pdf')
+    plot(outfile, use_log=False)
+    plot(outfile, use_log=True)
+
 
