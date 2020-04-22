@@ -73,7 +73,7 @@ def worker(segment_num, segment_group, stim_pars, swc_file, parameters, mechanis
     return R
 
 
-def plot_morpho(data, use_log=False, n_levels=64):
+def plot_morpho(data, n_levels=64):
     morpho = np.loadtxt(data['swc_file'])
     xyz = morpho[:,2:5]
     idx, = np.where(morpho[:,1] != 2)
@@ -84,57 +84,60 @@ def plot_morpho(data, use_log=False, n_levels=64):
     
     x_lim = [x_min, x_max]
     y_lim = [y_min, y_max]
-    x_lim[0] -= (x_lim[1]-x_lim[0]) * 0.05
-    x_lim[1] += (x_lim[1]-x_lim[0]) * 0.05
-    y_lim[0] -= (y_lim[1]-y_lim[0]) * 0.05
-    y_lim[1] += (y_lim[1]-y_lim[0]) * 0.05
+    x_lim[0] -= (x_lim[1] - x_lim[0]) * 0.05
+    x_lim[1] += (x_lim[1] - x_lim[0]) * 0.05
+    y_lim[0] -= (y_lim[1] - y_lim[0]) * 0.05
+    y_lim[1] += (y_lim[1] - y_lim[0]) * 0.05
 
-    x_width = 0.4
-    y_width = 0.9
-
-    x_size = (x_lim[1] - x_lim[0]) / 100
-    y_size = (y_lim[1] - y_lim[0]) / 100
-    x_size *= (y_width / x_width)
-
-    fig = plt.figure(figsize=(x_size, y_size))
-    ax1 = plt.axes([0.05, 0.05, x_width, y_width])
+    height = 0.5
+    width = (x_lim[1] - x_lim[0]) / (y_lim[1] - y_lim[0]) * height
+    height += 0.3
+    x_offset = 0.05
+    y_offset = (1 - height) / 2
+    x_spacing = 0.05
 
     X = np.concatenate(list(data['centers'].values()))
     R = np.concatenate(list(data['R'].values()))
     R_min = 10 # R.min()
     R_max = 2000 # R.max()
 
-    if use_log:
-        R_log = np.log10(R)
-        Y = (R_log - np.log10(R_min)) / (np.log10(R_max) - np.log10(R_min))
-    else:
-        Y = (R - R_min) / (R_max - R_min)
+    Y = (R - R_min) / (R_max - R_min)
 
-    if use_log:
-        norm = colors.LogNorm(vmin = R_min, vmax = R_max)
-    else:
-        norm = colors.Normalize(vmin = R_min, vmax = R_max)
-
+    fig = plt.figure(figsize=(8,4))
     ticks = np.concatenate([[R_min], np.arange(500, R_max+1, 500)])
-
     levels = np.linspace(R_min, R_max, n_levels)
 
+    # linear plot
+    norm = colors.Normalize(vmin = R_min, vmax = R_max)
     interp = NearestNDInterpolator(X, Y)
+
+    ax1 = plt.axes([x_offset, y_offset, width, height])
+    plt.contourf([[0,0], [0,0]], levels, norm=norm, cmap=cm.jet)
+    btmorph.plot_2D_SWC(data['swc_file'], color_fun=lambda pt: cm.jet(interp(pt))[0][:3], new_fig=False,
+                        filter=[1,3,4], tight=True, align=True)
+    cbar = plt.colorbar(fraction=0.1, shrink=1, aspect=20, ticks=ticks, orientation='horizontal')
+    cbar.set_label(r'Impedance (M$\Omega$)')
+    cbar.ax.set_xticklabels(ticks)
+
+    # log plot
+    R_log = np.log10(R)
+    Y = (R_log - np.log10(R_min)) / (np.log10(R_max) - np.log10(R_min))
+    norm = colors.LogNorm(vmin = R_min, vmax = R_max)
+    interp = NearestNDInterpolator(X, Y)
+    ax2 = plt.axes([x_offset+width+x_spacing, y_offset, width, height])
 
     plt.contourf([[0,0], [0,0]], levels, norm=norm, cmap=cm.jet)
     btmorph.plot_2D_SWC(data['swc_file'], color_fun=lambda pt: cm.jet(interp(pt))[0][:3], new_fig=False,
                         filter=[1,3,4], tight=True, align=True)
-    cbar = plt.colorbar(fraction=0.1, shrink=0.7, aspect=30, ticks=ticks)
+    cbar = plt.colorbar(fraction=0.1, shrink=1, aspect=20, ticks=ticks, orientation='horizontal')
     cbar.set_label(r'Impedance (M$\Omega$)')
-    cbar.ax.set_yticklabels(ticks)
+    cbar.ax.set_xticklabels(ticks)
 
-    ax2 = plt.axes([0.6, 0.1, 0.35, 0.35])
-    ax3 = plt.axes([0.6, 0.6, 0.35, 0.35])
+    # other panel
+    x0 = width * 2 + x_spacing * 3 + x_offset
+    w = 1 - x0 - 0.01
+    ax3 = plt.axes([x0, 0.2, w, 0.7])
 
-    X = np.concatenate(list(data['areas'].values()))
-    ax2.plot(X[1:], R[1:], 'ko', markerfacecolor='w', linewidth=1, markersize=4)
-    ax2.set_xlabel(r'Area ($\mu$m$^2$)')
-    ax2.set_ylabel(r'Impedance (M$\Omega$)')
     X = np.concatenate(list(data['diameters'].values()))
     ax3.plot(X[1:], R[1:], 'ko', markerfacecolor='w', linewidth=1, markersize=4)
     ax3.set_xlabel(r'Diameter ($\mu$m)')
@@ -146,29 +149,24 @@ def plot(*args, **kwargs):
     if len(args) == 0:
         parser = arg.ArgumentParser(description='Plot results of an impedance measurement experiment')
         parser.add_argument('file', type=str, action='store', help='pickle file containing the results of the experiment')
-        parser.add_argument('--log', action='store_true', help='print log of data')
-
+        parser.add_argument('--levels', type=int, default=64, help='number of colormap levels')
         args = parser.parse_args(args=sys.argv[2:])
         pkl_file = args.file
-        use_log = args.log
+        n_levels = args.levels
     else:
         pkl_file = args[0]
         try:
-            use_log = kwargs['use_log']
+            n_levels = kwargs['n_levels']
         except:
-            use_log = False
+            n_levels = 64
 
     if not os.path.isfile(pkl_file):
         print('{}: {}: no such file.'.format(progname, pkl_file))
         return
 
     data = pickle.load(open(pkl_file, 'rb'))
-    plot_morpho(data, use_log)
-    pdf_file = os.path.splitext(pkl_file)[0]
-    if use_log:
-        pdf_file += '_log.pdf'
-    else:
-        pdf_file += '_linear.pdf'
+    plot_morpho(data, n_levels)
+    pdf_file = os.path.splitext(pkl_file)[0] + '.pdf'
     plt.savefig(pdf_file)
 
 
@@ -357,7 +355,5 @@ if __name__ == '__main__':
     outfile = cell_name + '_impedance_' + os.path.splitext(args.params_file)[0] + '_' + args.model_type + '.pkl'
     pickle.dump(data, open(outfile, 'wb'))
 
-    plot(outfile, use_log=False)
-    plot(outfile, use_log=True)
-
+    plot(outfile)
 
