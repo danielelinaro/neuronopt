@@ -55,8 +55,8 @@ def measure_impedance(cell, segment, stim_pars):
     return R
 
 
-def worker(segment_num, segment_group, stim_pars, swc_file, parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell, cell_id=0):
-
+def worker(segment_num, segment_group, stim_pars, swc_file, parameters,
+           mechanisms, replace_axon, add_axon_if_missing, passive_cell, cell_id=0):
     cell_name = '{}_{:03d}_{}'.format(segment_group, segment_num, cell_id)
 
     cell = Cell(cell_name, swc_file, parameters, mechanisms)
@@ -307,7 +307,6 @@ if __name__ == '__main__':
     swc_file = args.swc_file
     stim_pars = {'delay': args.delay, 'duration': args.dur, 'amplitude': args.I * 1e-3}
 
-
     for i,parameters in enumerate(population):
         cell = Cell('CA3_cell_{}'.format(i), swc_file, parameters, mechanisms)
         cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
@@ -373,13 +372,13 @@ if __name__ == '__main__':
 
         if len(params_files) > 0:
             data['params_file'] = args.params_files[i]
-            suffix = os.path.splitext(params_files[i])[0]
+            suffix = os.path.splitext(os.path.basename(params_files[i]))[0]
         else:
             data['pickle_file'] = args.pickle_file
             data['individual'] = i
             suffix = 'pkl_individual_{}'.format(i)
 
-        outfile = cell_name + '_impedance_' + suffix + '_' + args.model_type + '.pkl'
+        outfile = working_dir + '/' + cell_name + '_impedance_' + suffix + '_' + args.model_type + '.pkl'
         pickle.dump(data, open(outfile, 'wb'))
         plot(outfile)
 
