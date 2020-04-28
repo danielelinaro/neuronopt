@@ -12,18 +12,11 @@ import matplotlib.colors as colors
 
 import btmorph
 
-import neuron
-from dlutils.cell import Cell
-from dlutils.utils import individuals_from_pickle, extract_mechanisms
-
-neuron.h.load_file('stdrun.hoc')
-neuron.h.cvode_active(1)
-
 # the name of this script
 progname = os.path.basename(sys.argv[0])
 
 
-def measure_impedance(cell, segment, stim_pars):
+def measure_impedance(cell, segment, stim_pars, neuron):
 
     recorders = {}
     for lbl in 't', 'v':
@@ -57,7 +50,14 @@ def measure_impedance(cell, segment, stim_pars):
 
 def worker(segment_num, segment_group, stim_pars, swc_file, parameters,
            mechanisms, replace_axon, add_axon_if_missing, passive_cell, cell_id=0):
-    cell_name = '{}_{:03d}_{}'.format(segment_group, segment_num, cell_id)
+
+    import neuron
+    from dlutils.cell import Cell
+
+    neuron.h.load_file('stdrun.hoc')
+    neuron.h.cvode_active(1)
+
+    cell_name = '{}_{:03d}_{}_{}'.format(segment_group, segment_num, cell_id, np.random.randint(0, 1000000000))
 
     cell = Cell(cell_name, swc_file, parameters, mechanisms)
     cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
@@ -69,8 +69,13 @@ def worker(segment_num, segment_group, stim_pars, swc_file, parameters,
     elif segment_group == 'apical':
         segments = cell.apical_segments
 
-    R = measure_impedance(cell, segments[segment_num]['seg'], stim_pars)
+    try:
+        R = measure_impedance(cell, segments[segment_num]['seg'], stim_pars, neuron)
+    except:
+        R = -1
+
     neuron.h('forall delete_section()')
+
     return R
 
 
@@ -202,6 +207,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args(args=sys.argv[1:])
 
+    from dlutils.utils import individuals_from_pickle, extract_mechanisms
+
     if args.serial:
         map_fun = map
     else:
@@ -304,14 +311,23 @@ if __name__ == '__main__':
         print('Unknown value for --model-type: "{}". Accepted values are `active` and `passive`.'.format(args.model_type))
         sys.exit(9)
 
+    import neuron
+    from dlutils.cell import Cell
+
+    neuron.h.load_file('stdrun.hoc')
+    neuron.h.cvode_active(1)
+
     swc_file = args.swc_file
     stim_pars = {'delay': args.delay, 'duration': args.dur, 'amplitude': args.I * 1e-3}
 
     for i,parameters in enumerate(population):
+        print('>>> individual {:2d}/{:2d} <<<'.format(i+1, len(population)))
+
         cell = Cell('CA3_cell_{}'.format(i), swc_file, parameters, mechanisms)
         cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
-        R = {'soma': np.array([measure_impedance(cell, cell.somatic_segments[0]['seg'], stim_pars)])}
+        R = {'soma': np.array([measure_impedance(cell, cell.somatic_segments[0]['seg'], stim_pars, neuron)])}
+        print('Somatic impedance: {:.2f} MOhm.'.format(R['soma'][0]))
 
         centers = {'soma': np.array([cell.somatic_segments[0]['center']])}
         centers['basal'] = np.array([seg['center'] for seg in cell.basal_segments])
@@ -324,8 +340,6 @@ if __name__ == '__main__':
         areas = {'soma': np.array([cell.somatic_segments[0]['area']])}
         areas['basal'] = np.array([seg['area'] for seg in cell.basal_segments])
         areas['apical'] = np.array([seg['area'] for seg in cell.apical_segments])
-
-        print('Somatic impedance: {:.2f} MOhm.'.format(R['soma'][0]))
 
         N = {'basal': len(cell.basal_segments), 'apical': len(cell.apical_segments)}
         print('The cell has {} basal and {} apical segments.'.format(N['basal'], N['apical']))

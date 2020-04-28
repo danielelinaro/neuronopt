@@ -73,13 +73,15 @@ class Cell (object):
     @staticmethod
     def set_nseg(morpho, use_dlambda_rule):
         if use_dlambda_rule:
-            print('Setting the number of segments using the d_lambda rule.')
+            if DEBUG:
+                print('Setting the number of segments using the d_lambda rule.')
             for sec in morpho.all:
                 sec.nseg = int((sec.L/(0.1*h.lambda_f(100,sec=sec))+0.9)/2)*2 + 1
                 if DEBUG:
                     print('%s: length = %g um, nseg = %d.' % (sec.name(),sec.L,sec.nseg))
         else:
-            print('Setting the number of segments using only section length.')
+            if DEBUG:
+                print('Setting the number of segments using only section length.')
             for sec in morpho.all:
                 sec.nseg = 1 + 2 * int(sec.L/40)
                 if DEBUG:
@@ -154,20 +156,22 @@ class Cell (object):
 
         n_axonal_sec = len([sec for sec in self.morpho.axonal])
         if replace_axon:
-            if n_axonal_sec == 0:
-                print('The cell has no axon: adding an AIS stub.')
-            else:
-                print('Replacing existing axon with AIS stub.')
+            if DEBUG:
+                if n_axonal_sec == 0:
+                    print('The cell has no axon: adding an AIS stub.')
+                else:
+                    print('Replacing existing axon with AIS stub.')
             Cell.replace_axon(self.morpho)
         elif add_axon_if_missing:
             if n_axonal_sec == 0:
-                print('The cell has no axon: adding an AIS stub.')
+                if DEBUG:
+                    print('The cell has no axon: adding an AIS stub.')
                 Cell.replace_axon(self.morpho)
-            else:
+            elif DEBUG:
                 print('The cell has an axon: not replacing it with an AIS stub.')
-        elif n_axonal_sec == 0:
+        elif n_axonal_sec == 0 and DEBUG:
             print('The cell has no axon: not replacing it with an AIS stub.')
-        else:
+        elif DEBUG:
             print('The cell has an axon: not replacing it with an AIS stub.')
 
         self.n_somatic_sections = len([sec for sec in self.morpho.somatic])
