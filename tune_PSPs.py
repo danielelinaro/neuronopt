@@ -380,7 +380,7 @@ def fit_EPSP():
 
     optim = {}
 
-    AMPA_parameters_0 = [parameters['AMPA'][name] for name in synapse_parameter_names]
+    AMPA_parameters_0 = np.array([parameters['AMPA'][name] for name in synapse_parameter_names])
     weight_0 = 3.0
     synapse_parameters = {
         'to_optimize': 'AMPA',
@@ -411,14 +411,16 @@ def fit_EPSP():
         func = lambda x: np.sqrt(np.sum(cost_fit_EPSP(x, synapse, synapse_parameters,
                                                       EPSP_parameters, delay, t_event, neuron,
                                                       rec, window, None) ** 2))
-        optim['TTX']['MIN'] = minimize(func, AMPA_parameters_0, bounds = [v for v in bounds_dict['AMPA'].values()],
+
+        optim['TTX']['MIN'] = minimize(func, AMPA_parameters_0,
+                                       bounds = [v for v in bounds_dict['AMPA'].values()],
                                        options = {'maxiter': 100, 'disp': True})
 
         AMPA_parameters = optim['TTX']['MIN']['x']
 
         fig = plt.figure(figsize=(width, height*2))
         ax = make_axes(n_rows=2)
-        cost_fit_EPSP(optim['TTX']['MIN']['x'], synapse, synapse_parameters, EPSP_parameters,
+        cost_fit_EPSP(AMPA_parameters, synapse, synapse_parameters, EPSP_parameters,
                       delay, t_event, neuron, rec, window, ax[0])
     else:
         AMPA_parameters = AMPA_parameters_0
@@ -456,14 +458,15 @@ def fit_EPSP():
     if not optimize_only_weight:
         func = lambda x: np.sqrt(np.sum(cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay,
                                                       t_event, neuron, rec, window, None) ** 2))
-        optim['CTRL']['MIN'] = minimize(func, NMDA_parameters_0, bounds = [v for v in bounds_dict['NMDA'].values()],
+        optim['CTRL']['MIN'] = minimize(func, NMDA_parameters_0,
+                                        bounds = [v for v in bounds_dict['NMDA'].values()],
                                         options = {'maxiter': 100, 'disp': True})
 
         NMDA_parameters = optim['CTRL']['MIN']['x']
 
         fig = plt.figure(figsize=(width, height*2))
         ax = make_axes(n_rows=2)
-        cost_fit_EPSP(optim['CTRL']['MIN']['x'], synapse, synapse_parameters, EPSP_parameters, \
+        cost_fit_EPSP(NMDA_parameters, synapse, synapse_parameters, EPSP_parameters, \
                       delay, t_event, neuron, rec, window, ax[0])
     else:
         NMDA_parameters = NMDA_parameters_0

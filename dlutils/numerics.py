@@ -16,22 +16,21 @@ def double_exp(t1, t2, d, t):
     out --> double exponential, with max amplitude == 1,
     regardless of the combination {t1, t2}..
     """
+
+    fun = lambda t1, t2, t: (np.exp(-t/t1) - np.exp(-t/t2)) / (t1 - t2)
+
     # Let's consider the function f(t) = (exp(-t/t1)-exp(-t/t2))/(t1-t2)
     # I compute the time 'tt' at which the first derivative of f(t) is zero
     tt = (t1 * t2 / (t2 - t1)) * np.log(t2 / t1);          
 
-    # I then compute f(tt)
-    aa = (np.exp(- tt / t1) - np.exp(- tt / t2)) / (t1 - t2);
-
-    # I appropriately prepare a normalization prefactor.. (so it has unitary
-    # peak amplitude).
-    A  = 1. / (aa * (t1 - t2));
-
-    # Then, the actual function as an output
-    return A * (np.exp(- (t - d) / t1) - np.exp(- (t - d) / t2) ) * (t >= d)
+    return fun(t1, t2, t-d) / fun(t1, t2, tt) * (t >= d)
 
 
 def fit_epsp(t, V, t0, duration, slope_window=2.5, ax=None):
+
+    tr_min,tr_max   = 0.1e-3,10e-3
+    td_min,td_max   = 0.5e-3,500e-3
+    dly_min,dly_max = 0.1e-3,200e-3
 
     #idx, = np.where((t > t0 - 50e-3) & (t < t0 - 10e-3))
     idx, = np.where((t > t0 + duration - 50e-3) & (t < t0 + duration))
@@ -68,18 +67,16 @@ def fit_epsp(t, V, t0, duration, slope_window=2.5, ax=None):
                                (duration - t_EPSP[idx_max[k]]) / 10, \
                                t_EPSP[idx_max[k]] / 10])
 
-        res = least_squares(fun, \
-                            EPSP_pars, \
-                            bounds=((0,0,0), (np.inf,np.inf,np.inf)), \
+        res = least_squares(fun, EPSP_pars, \
+                            bounds=((tr_min, td_min, dly_min), (tr_max, td_max, dly_max)), \
                             args=(EPSPs[k,:], t_EPSP))
 
         x0 = np.mean(EPSPs[k,t_EPSP < res['x'][2]])
         if x0 < 0.05:
             EPSPs[k,:] = (EPSPs[k,:] - x0) / (1 + np.abs(x0))
             EPSP_pars = res['x']
-            res = least_squares(fun, \
-                                EPSP_pars, \
-                                bounds=((0,0,0), (np.inf,np.inf,np.inf)), \
+            res = least_squares(fun, EPSP_pars, \
+                                bounds=((tr_min, td_min, dly_min), (tr_max, td_max, dly_max)), \
                                 args=(EPSPs[k,:], t_EPSP))
             amplitudes[k] *= (1 + np.abs(x0))
 
