@@ -100,6 +100,7 @@ if __name__ == '__main__':
     parser.add_argument('-f','--force', action='store_true', help='force overwrite of existing output file')
     parser.add_argument('-q','--quiet', action='store_true', help='do not show plots')
     parser.add_argument('--Ra', type=str, default='150', help='axial resistivity of the spine (default: 150 Ohm cm)')
+    parser.add_argument('--target-dV', type=float, default=10, help='target deflection (default: 10 mV)')
     parser.add_argument('--max-iter', type=int, default=20, help='maximum number of iteration for optimize (default: 20)')
     parser.add_argument('segment', type=str, default='apical[0](0.5)', nargs='?', action='store',
                         help='Segment where the spine will be placed (default: apical[0](0.5))')
@@ -184,7 +185,7 @@ if __name__ == '__main__':
         suffix,_ = os.path.splitext(filename)
     else:
         output_folder = os.getcwd()
-        suffix = args.segment + '_' + args.model_type + '_Ra=' + args.Ra
+        suffix = args.segment + '_' + args.model_type + '_Ra=' + args.Ra + '_dV=' + str(args.target_dV)
         output_file = output_folder + '/AR_' + suffix + '.pkl'
 
     if os.path.exists(output_file) and not args.force:
@@ -284,9 +285,10 @@ if __name__ == '__main__':
         vec[k] = h.Vector(EPSP[k])
 
     stimuli = {k: h.IClamp(seg[k]) for k in seg}
-    rec = {'t': h.Vector()}
+    rec = {'t': h.Vector(), 'soma': h.Vector()}
     rec['t'].record(h._ref_t)
-    for k in 'spine', 'dend':
+    rec['soma'].record(cell.morpho.soma[0](0.5)._ref_v)
+    for k in locations:
         stimuli[k].dur = 10 * t_end
         rec[k] = h.Vector()
         rec[k].record(seg[k]._ref_v)
@@ -296,18 +298,19 @@ if __name__ == '__main__':
     
     h.cvode_active(1)
 
-    target_dV = {k: 10. for k in locations}
+    target_dV = {k: args.target_dV for k in locations}
     opt = minimize(lambda x: cost(x, target_dV, vec, time, EPSP, rec, t_onset), \
                    weights_0, \
                    bounds = [(0,1), (0,1)], \
                    options = {'maxiter': args.max_iter, 'disp': True})
 
-
+    locations.append('soma')
+    
     weights = opt['x']
     c = cost(weights, target_dV, vec, time, EPSP, rec, t_onset)
     print('Cost: {:.3e}.'.format(c))
-    
-    col = {'spine': 'g', 'dend': 'm'}
+
+    col = {'spine': 'g', 'dend': 'm', 'soma': 'k'}
     plt.figure(figsize=(3,2))
     ax = plt.axes([0.175, 0.2, 0.775, 0.775])
     for k in locations:
@@ -340,10 +343,12 @@ if __name__ == '__main__':
     print('Current injected in the dendrite:')
     print('   Dendrite deflection: {:.3f} mV.'.format(dend_to_spine_dV['dend']))
     print('      Spine deflection: {:.3f} mV.'.format(dend_to_spine_dV['spine']))
+    print('    Somatic deflection: {:.3f} mV.'.format(dend_to_spine_dV['soma']))
     print('')
     print('Current injected in the spine:')
     print('      Spine deflection: {:.3f} mV.'.format(spine_to_dend_dV['spine']))
     print('   Dendrite deflection: {:.3f} mV.'.format(spine_to_dend_dV['dend']))
+    print('    Somatic deflection: {:.3f} mV.'.format(spine_to_dend_dV['soma']))
     print('')
     print('Amplitude ratio: {:.2f}.'.format(AR))
     print('')
@@ -352,7 +357,7 @@ if __name__ == '__main__':
     data = {'dend_to_spine_dV': dend_to_spine_dV, 'spine_to_dend_dV': spine_to_dend_dV,
             'AR': AR, 'R_dend': R_dend, 'R_neck': R_neck, 'target_dV': target_dV,
             'weights': weights, 'cost_fun': c, 'section_num': section_num, 'segment_x': segment_x,
-            'Ra': Ra, 'passive': passive, 'with_TTX': with_TTX,
+            'Ra': Ra, 'passive': passive, 'with_TTX': with_TTX, 'target_dV': args.target_dV,
             'head_L': head_L, 'head_diam': head_diam, 'neck_L': neck_L, 'neck_diam': neck_diam,
             'spine_dst': segment_dst, 'dend_diam': segment_diam, 'dend_branch_order': segment_branch_order}
 
