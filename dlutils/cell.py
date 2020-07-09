@@ -9,7 +9,7 @@ h.load_file('stdrun.hoc')
 
 DEBUG = False
 
-__all__ = ['compute_section_area', 'distance', 'Cell']
+__all__ = ['compute_section_area', 'distance', 'branch_order', 'Cell']
 
 def compute_section_area(section):
     a = 0.
@@ -24,6 +24,12 @@ def distance(origin, end):
 
 def dst(x,y):
     return np.sqrt(np.sum((x-y)**2))
+
+def branch_order(sec):
+    sr = h.SectionRef(sec=sec)
+    if sr.has_parent():
+        return 1 + branch_order(sr.parent().sec)
+    return 0
 
 class Cell (object):
     @staticmethod
@@ -136,7 +142,7 @@ class Cell (object):
         self.secarray_names = ['soma', 'dend', 'apic', 'axon', 'myelin']
 
 
-    def instantiate(self, replace_axon=False, add_axon_if_missing=True, use_dlambda_rule=False, force_passive=False):
+    def instantiate(self, replace_axon=False, add_axon_if_missing=True, use_dlambda_rule=False, force_passive=False, TTX=False):
         self.template = Cell.create_empty_template(self.cell_name,self.seclist_names,self.secarray_names)
         h(self.template)
         self.template_function = getattr(h, self.cell_name)
@@ -186,7 +192,10 @@ class Cell (object):
         else:
             self.has_axon = False
 
-        self.biophysics(use_dlambda_rule, force_passive)
+        if force_passive and TTX:
+            import warnings
+            warnings.warn('force_passive has precedence over TTX')
+        self.biophysics(use_dlambda_rule, force_passive, TTX)
 
         h.distance(0, 0.5, sec=self.morpho.soma[0])
         self.compute_total_area()
@@ -194,7 +203,7 @@ class Cell (object):
         self.compute_path_lengths()
 
 
-    def biophysics(self, use_dlambda_rule, force_passive):
+    def biophysics(self, use_dlambda_rule, force_passive, TTX):
 
         passive_parameters = ['cm', 'Ra', 'e_pas', 'g_pas']
 
@@ -203,7 +212,7 @@ class Cell (object):
             region = getattr(self.morpho,reg)
             for sec in region:
                 for mech in mechs:
-                    if not force_passive or mech == 'pas':
+                    if mech == 'pas' or (not force_passive and (not TTX or 'na' not in mech)):
                         sec.insert(mech)
 
         if use_dlambda_rule:
@@ -213,7 +222,7 @@ class Cell (object):
                     for sec in region:
                         setattr(sec,param['param_name'],param['value'])
             Cell.set_nseg(self.morpho, use_dlambda_rule)
-        
+
         for param in self.parameters:
             if param['type'] == 'global':
                 setattr(h,param['param_name'],param['value'])
@@ -221,7 +230,8 @@ class Cell (object):
                 region = getattr(self.morpho,param['sectionlist'])
                 if param['dist_type'] == 'uniform':
                     for sec in region:
-                        if not force_passive or param['param_name'] in passive_parameters:
+                        if param['param_name'] in passive_parameters or \
+                           (not force_passive and (not TTX or 'na' not in param['param_name'])):
                             setattr(sec,param['param_name'],param['value'])
                 else:
                     h.distance(0, 0.5, sec=self.morpho.soma[0])
@@ -229,7 +239,8 @@ class Cell (object):
                         for seg in sec:
                             dst = h.distance(1, seg.x, sec=sec)
                             g = eval(param['dist'].format(distance=dst,value=param['value']))
-                            if not force_passive or param['param_name'] in passive_parameters:
+                            if param['param_name'] in passive_parameters or \
+                               (not force_passive and (not TTX or 'na' not in param['param_name'])):
                                 setattr(seg,param['param_name'],g)
             else:
                 print('Unknown parameter type: %s.' % param['type'])
