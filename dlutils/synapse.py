@@ -3,7 +3,7 @@ import numpy as np
 from neuron import h
 from . import cell as cu
 
-__all__ = ['Synapse', 'AMPANMDASynapse', 'GABAASynapse', 'build_cell_with_synapses']
+__all__ = ['Synapse', 'AMPAExp2Synapse', 'NMDAExp2Synapse', 'AMPANMDASynapse', 'GABAASynapse', 'build_cell_with_synapses']
 
 class Synapse (object):
     def __init__(self, sec, x, weight, delay=1.):
@@ -23,6 +23,30 @@ class Synapse (object):
 
     def get_presynaptic_spike_times(self):
         return np.array(self.spike_times)
+
+
+class AMPAExp2Synapse (Synapse):
+    def __init__(self, sec, x, E, tau1, tau2, weight, delay=1., **kwargs):
+        Synapse.__init__(self, sec, x, weight, delay)
+
+        self.syn.tau1 = tau1
+        self.syn.tau2 = tau2
+        self.syn.e = E
+
+    def make_synapse(self, sec, x):
+        return h.Exp2Syn(sec(x))
+
+
+class NMDAExp2Synapse (Synapse):
+    def __init__(self, sec, x, E, tau1, tau2, weight, delay=1., **kwargs):
+        Synapse.__init__(self, sec, x, weight, delay)
+
+        self.syn.tau1 = tau1
+        self.syn.tau2 = tau2
+        self.syn.e = E
+
+    def make_synapse(self, sec, x):
+        return h.Exp2SynNMDA(sec(x))
 
 
 class AMPANMDASynapse (Synapse):
