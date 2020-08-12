@@ -3,7 +3,7 @@ import numpy as np
 from neuron import h
 from . import cell as cu
 
-__all__ = ['Synapse', 'AMPAExp2Synapse', 'NMDAExp2Synapse', 'AMPANMDADMSSynapse', 'GABAASynapse', 'build_cell_with_synapses']
+__all__ = ['Synapse', 'AMPAExp2Synapse', 'NMDAExp2Synapse', 'AMPANMDAExp2Synapse', 'AMPANMDADMSSynapse', 'GABAASynapse', 'build_cell_with_synapses']
 
 class Synapse (object):
     def __init__(self, sec, x, weight, delay=1.):

@@ -23,7 +23,10 @@ def double_exp(t1, t2, d, t):
     # I compute the time 'tt' at which the first derivative of f(t) is zero
     tt = (t1 * t2 / (t2 - t1)) * np.log(t2 / t1);          
 
-    return fun(t1, t2, t-d) / fun(t1, t2, tt) * (t >= d)
+    y = np.zeros(t.shape)
+    idx = t >= d
+    y[idx] = fun(t1, t2, t[idx] - d) / fun(t1, t2, tt)
+    return y
 
 
 def fit_epsp(t, V, t0, duration, slope_window=2.5, ax=None):

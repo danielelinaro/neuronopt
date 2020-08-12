@@ -17,8 +17,13 @@ def make_spine_coords(points, lengths):
     n_points = int((points.shape[0] - 1) / 2)
     n_dims = points.shape[1]
     center = points[n_points,:]
-    p = np.polyfit(points[:,0], points[:,1], 1)
-    m = -1 / p[0]
+    if np.all(points[:,0] == points[0,0]):
+        m = 0
+    elif np.all(points[:,1] == points[0,1]):
+        raise NotImplementedError('Dendrite cannot be parallel to the x axis')
+    else:
+        p = np.polyfit(points[:,0], points[:,1], 1)
+        m = -1 / p[0]
     q = center[1] - m * center[0]
     n_points = len(lengths)
     spine_points = np.zeros((n_points, n_dims))

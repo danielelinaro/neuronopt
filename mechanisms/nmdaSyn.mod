@@ -38,7 +38,7 @@ ENDCOMMENT
 
 NEURON {
 	POINT_PROCESS Exp2SynNMDA
-	RANGE tau1, tau2, e, i, mgBlock
+	RANGE tau1, tau2, e, i, mgBlock, alpha_vspom, v0_block, eta, extMgConc
 	NONSPECIFIC_CURRENT i
 
 	RANGE g
@@ -57,6 +57,7 @@ PARAMETER {
 	alpha_vspom = -0.062 (/mV) :-0.075: -0.0602: -0.08: -0.062  :voltage-dependence of Mg2+ block from Maex and De Schutter 1998
 	                                           : -0.0602 from Spruston et al. (1995) (Ching-Lung)
 	v0_block = 10 (mV): 0 
+	eta = 0.2801 (1)
 	extMgConc = 1 (mM) : external Mg concentration
 }
 
@@ -104,11 +105,7 @@ NET_RECEIVE(weight (uS)) {
 }
 
 FUNCTION vspom (v(mV))( ){
-	vspom=1./(1.+0.2801*extMgConc*exp(alpha_vspom*(v-v0_block))) :voltage-dependence of Mg2+ block from Maex and De Schutter 1998
+	vspom = 1. / (1. + eta * extMgConc * exp(alpha_vspom * (v - v0_block))) :voltage-dependence of Mg2+ block from Maex and De Schutter 1998
+	:vspom = 1. / (1. + exp(-0.062 * v * extMgConc / 3.57))  :voltage-dependence of Mg2+ block from Harnett et al., 2012
 }
-
-
-
-
-
 
