@@ -106,6 +106,7 @@ NET_RECEIVE(weight (uS)) {
 
 FUNCTION vspom (v(mV))( ){
 	vspom = 1. / (1. + eta * extMgConc * exp(alpha_vspom * (v - v0_block))) :voltage-dependence of Mg2+ block from Maex and De Schutter 1998
-	:vspom = 1. / (1. + exp(-0.062 * v * extMgConc / 3.57))  :voltage-dependence of Mg2+ block from Harnett et al., 2012
+	:vspom = 1. / (1. + (extMgConc / 3.57) * exp(-0.062 * v))                :voltage-dependence of Mg2+ block from Harnett et al., 2012
+	:vspom = 1. / (1. + (extMgConc / 9.888) * exp(0.09137 * (2.222 - v)))    :voltage-dependence of Mg2+ block from Jahr & Stevens, 1990
 }
 
