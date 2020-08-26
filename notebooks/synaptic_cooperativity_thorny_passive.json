@@ -1,0 +1,38 @@
+{
+    "cell_type": "thorny",
+    "cell_name": "DH070813",
+    "optimization_run": "20191208071008_DH070813_",
+    "swc_file": "DH070813-.Edit.scaled.converted.swc",
+    "individual": 1,
+    "passive": true,
+    "with_TTX": false,
+    "section_num": 14,
+    "Ra_neck_coeff": 1.5,
+    "spine": {
+        "head_L": 0.5,
+        "head_diam": 0.5,
+        "neck_L": 1.58,
+        "neck_diam": 0.05
+    },
+    "spine_distance": 5,
+    "n_spines": 9,
+    "NMDA": {
+        "model": "JS",
+        "extMgConc": 1.0,
+        "Kd": 9.888,
+        "gamma": 0.109644,
+        "sh": -12.778,
+        "time_constants": {
+            "tau1": 1.0,
+            "tau2": 50.0
+        },
+        "weight": 0.0006
+    },
+    "AMPA": {
+        "time_constants": {
+            "tau1": 0.1,
+            "tau2": 1.0
+        },
+        "weight": 0.0001
+    }
+}
