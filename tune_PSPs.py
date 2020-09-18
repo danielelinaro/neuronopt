@@ -34,12 +34,22 @@ progname = os.path.basename(sys.argv[0])
 ############################################################
 
 
-synapse_parameter_names = ['kon', 'koff', 'CC', 'CO', 'Beta', 'Alpha']
+# Destexhe-Mainen-Sejnowski synapse
+DMS_synapse_parameter_names = ['kon', 'koff', 'CC', 'CO', 'Beta', 'Alpha']
 
-default_synapse_parameters = {
+default_DMS_synapse_parameters = {
     'AMPA':  {'kon':  12.880, 'koff': 6.470, 'CC': 69.970, 'CO':  6.160, 'Beta': 100.63, 'Alpha': 173.040, 'weight':  1.0}, \
     'NMDA':  {'kon':  86.890, 'koff': 0.690, 'CC':  9.640, 'CO':  2.600, 'Beta':   0.68, 'Alpha':   0.079}, \
     'GABAA': {'kon':   5.397, 'koff': 4.433, 'CC': 20.945, 'CO':  1.233, 'Beta': 283.09, 'Alpha': 254.520, 'weight': 10.0}, \
+    'AMPA_NMDA_ratio': 2
+}
+
+exp2_synapse_parameter_names = ['tau1', 'tau2']
+
+default_exp2_synapse_parameters = {
+    'AMPA':  {'tau1': 0.2, 'tau2': 5.0, 'weight': 1.0}, \
+    'NMDA':  {'tau1': 5.0, 'tau2': 200.0}, \
+    'GABAA': {'tau1': 0.5, 'tau2': 10.0}, \
     'AMPA_NMDA_ratio': 2
 }
 
@@ -107,7 +117,7 @@ def cost_sim(tau_rise, tau_decay, amplitude, delay, t_event, neuron, rec, window
 
 def fit_PSP_preamble(mode):
     from dlutils import utils
-    from dlutils import cell as cu
+    from dlutils.cell import Cell
 
     parser = arg.ArgumentParser(description='Optimize EPSP amplitude in a neuron model')
     parser.add_argument('-F','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
@@ -123,8 +133,10 @@ def fit_PSP_preamble(mode):
                         help='whether to replace the axon (accepted values: "yes" or "no")')
     parser.add_argument('-A', '--add-axon-if-missing', type=str, default=None,
                         help='whether to add an axon if the cell does not have one (accepted values: "yes" or "no")')
-    parser.add_argument('--model-type', type=str, default='passive',
-                        help='whether to use a passive or active model (accepted values: "passive" (default) or "active")')
+    parser.add_argument('--model-type', type=str, default='ttx',
+                        help='whether to use a passive or active model (accepted values: "TTX" (default), "passive" or "active")')
+    parser.add_argument('--synapse-type', type=str, default='exp2',
+                        help='which synapse model to (accepted values: "EXP2" (default) or "DMS")')
     parser.add_argument('-i','--input-file', type=str, default=None,
                         help='JSON file to use as initial guess for the optimization')
     parser.add_argument('-o','--output-file', type=str, default=None,
@@ -132,6 +144,7 @@ def fit_PSP_preamble(mode):
     parser.add_argument('-f','--force', action='store_true', help='force overwrite of existing output file')
     parser.add_argument('-q','--quiet', action='store_true', help='do not show plots')
     parser.add_argument('-w','--weight-only', action='store_true', help='optimize only weight, not synapse parameters')
+    parser.add_argument('--with-spine', action='store_true', help='add a two-compartment spine')
 
     parser.add_argument('--ctrl-file', type=str, required=True, help='CTRL data file')
     if mode == 'excitatory':
@@ -157,13 +170,22 @@ def fit_PSP_preamble(mode):
         if not os.path.isfile(v):
             print('{}: {}: no such file.'.format(v))
 
-    if args.model_type == 'passive':
-        passive = True
-    elif args.model_type == 'active':
+    if args.model_type.lower() == 'ttx':
         passive = False
+        with_TTX = True
+    elif args.model_type.lower() == 'passive':
+        passive = True
+        with_TTX = False
+    elif args.model_type.lower() == 'active':
+        passive = False
+        with_TTX = False
     else:
         print('Unknown value for --model option: "{}".'.format(args.model_type))
         sys.exit(1)
+
+    synapse_type = args.synapse_type.lower()
+    if synapse_type not in ('exp2','dms'):
+        raise Exception('Synapse type must be either "EXP2" or "DMS".')
 
     if args.mech_file is not None:
         if not os.path.isfile(args.mech_file):
@@ -234,7 +256,7 @@ def fit_PSP_preamble(mode):
         print('{} exists: use -f to force overwrite.'.format(output_file))
         sys.exit(1)
 
-    cell = cu.Cell('CA3_cell_%d' % int(np.random.uniform()*1e5), args.swc_file, parameters, mechanisms)
+    cell = Cell('CA3_cell_%d' % int(np.random.uniform()*1e5), args.swc_file, parameters, mechanisms)
     cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive)
 
     if 'basal' in args.segment:
@@ -249,12 +271,32 @@ def fit_PSP_preamble(mode):
         print('Unknown segment type: "{}". Segment type must be one of "somatic", "basal", "apical" or "axonal".'.format(args.segment))
         sys.exit(1)
 
-    idx = int(re.findall(r'\d+', args.segment)[0])
-    try:
-        segment = segments[idx]
-    except:
-        print('{} segments do not contain index {} (max value is {}).'.format(args.segment.split('[')[0], idx, len(segments)-1))
-        sys.exit(1)
+    ss = args.segment.split('[')
+    group = ss[0]
+    ss = ss[1].split(']')
+    section_num = int(ss[0])
+    segment_x = float(ss[1][1:-1])
+
+    if group == 'apical':
+        section = cell.morpho.apic[section_num]
+        all_segments = cell.apical_segments
+    elif group == 'basal':
+        section = cell.morpho.dend[section_num]
+        all_segments = cell.basal_segments
+    elif group == 'axon':
+        section = cell.morpho.axon[section_num]
+        all_segments = cell.axonal_segments
+    elif group == 'soma':
+        section = cell.morpho.soma[section_num]
+        all_segments = cell.somatic_segments
+    else:
+        print('Unknown location: `{}`.'.format(group))
+        sys.exit(10)
+
+    segment = section(segment_x)
+    for seg in all_segments:
+        if seg['seg'] == segment:
+            break
 
     data = {k: pickle.load(open(v, 'rb')) for k,v in data_files.items()}
     tau_rise = {k: data[k]['tau_rise'] * 1e3 for k in data}
@@ -269,9 +311,13 @@ def fit_PSP_preamble(mode):
             print('{} does not exist: using default parameter guesses to initialize the optimization.'.format(args.input_file))
         else:
             print('Using default parameter guesses to initialize the optimization.')
-        parameters = default_synapse_parameters
+        if synapse_type == 'exp2':
+            parameters = default_exp2_synapse_parameters
+        else:
+            parameters = default_DMS_synapse_parameters
 
-    return cell, segment, output_file, tau_rise, tau_decay, amplitude, parameters, args.weight_only, args.quiet
+    return cell, seg, output_file, tau_rise, tau_decay, amplitude, parameters, \
+        synapse_type, args.with_spine, args.weight_only, args.quiet
 
 
 def make_axes(n_rows, n_cols=2):
@@ -310,40 +356,54 @@ def cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay, t_even
     tau_decay = EPSP_parameters['tau_decay']
     amplitude = EPSP_parameters['amplitude'] if 'amplitude' in EPSP_parameters else None
 
+    ampa_nmda_ratio = synapse_parameters['ampa_nmda_ratio'] if 'ampa_nmda_ratio' in synapse_parameters else 0.0
+
     if len(x) == 1:
         weight = x[0]
         AMPA_pars = synapse_parameters['AMPA']
         NMDA_pars = synapse_parameters['NMDA']
-    elif len(x) == 6:
+    elif len(x) in (2,3,6,7):
         weight = synapse_parameters['weight']
         if synapse_parameters['to_optimize'] == 'AMPA':
             AMPA_pars = x
             NMDA_pars = synapse_parameters['NMDA']
         elif synapse_parameters['to_optimize'] == 'NMDA':
             NMDA_pars = x
+            if len(x) in (3,7):
+                NMDA_pars = x[:-1]
+                ampa_nmda_ratio = x[-1]
             AMPA_pars = synapse_parameters['AMPA']
         else:
             raise Exception("Unknown synapse type: '{}'".format(synapse_parameters['to_optimize']))
     else:
         raise Exception('Wrong number of parameters')
 
-    ampa_nmda_ratio = synapse_parameters['ampa_nmda_ratio'] if 'ampa_nmda_ratio' in synapse_parameters else 0.0
+    if len(AMPA_pars) == 2:
+        ### double exponential synapse
+        # AMPA synapse
+        synapse.syn[0].tau1 = AMPA_pars[0]
+        synapse.syn[0].tau2 = AMPA_pars[1]
+        # NMDA synapse
+        synapse.syn[1].tau1 = NMDA_pars[0]
+        synapse.syn[1].tau2 = NMDA_pars[1]
+    else:
+        ### Destexhe-Mainen-Sejnowski synapse
+        # AMPA synapse
+        synapse.syn[0].kon      = AMPA_pars[0]
+        synapse.syn[0].koff     = AMPA_pars[1]
+        synapse.syn[0].CC       = AMPA_pars[2]
+        synapse.syn[0].CO       = AMPA_pars[3]
+        synapse.syn[0].Beta     = AMPA_pars[4]
+        synapse.syn[0].Alpha    = AMPA_pars[5]
+        # NMDA synapse
+        synapse.syn[1].kon      = NMDA_pars[0]
+        synapse.syn[1].koff     = NMDA_pars[1]
+        synapse.syn[1].CC       = NMDA_pars[2]
+        synapse.syn[1].CO       = NMDA_pars[3]
+        synapse.syn[1].Beta     = NMDA_pars[4]
+        synapse.syn[1].Alpha    = NMDA_pars[5]
 
-    # AMPA synapse
-    synapse.syn[0].kon      = AMPA_pars[0]
-    synapse.syn[0].koff     = AMPA_pars[1]
-    synapse.syn[0].CC       = AMPA_pars[2]
-    synapse.syn[0].CO       = AMPA_pars[3]
-    synapse.syn[0].Beta     = AMPA_pars[4]
-    synapse.syn[0].Alpha    = AMPA_pars[5]
-    # NMDA synapse
-    synapse.syn[1].kon      = NMDA_pars[0]
-    synapse.syn[1].koff     = NMDA_pars[1]
-    synapse.syn[1].CC       = NMDA_pars[2]
-    synapse.syn[1].CO       = NMDA_pars[3]
-    synapse.syn[1].Beta     = NMDA_pars[4]
-    synapse.syn[1].Alpha    = NMDA_pars[5]
-    # synaptic weights:
+    ### synaptic weights:
     # AMPA
     synapse.nc[0].weight[0] = weight
     # NMDA
@@ -354,19 +414,67 @@ def cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay, t_even
 
 def fit_EPSP():
     import neuron
-    from dlutils import synapse as su
+    from dlutils.synapse import AMPANMDADMSSynapse, AMPANMDAExp2Synapse
+    from dlutils.spine import Spine
+    from dlutils.cell import branch_order
 
     height = 2
     width = 2.5 * height
 
     cell, seg, output_file, tau_rise, tau_decay, amplitude, \
-        parameters, optimize_only_weight, quiet = fit_PSP_preamble('excitatory')
+        parameters, synapse_type, with_spine, optimize_only_weight, \
+        quiet = fit_PSP_preamble('excitatory')
+    print('Section branch order: {}.'.format(branch_order(seg['sec'])))
+
+    global synapse_parameter_names
+    global default_synapse_parameters
+
+    if synapse_type == 'exp2':
+        SynapseClass = AMPANMDAExp2Synapse
+        synapse_parameter_names = exp2_synapse_parameter_names
+        default_synapse_parameters = default_exp2_synapse_parameters
+        weight_0 = {'AMPA': 1e-3, 'NMDA': 1e-3}
+        weight_bounds = {'AMPA': (1e-4, 2.), 'NMDA':  (1e-4, 2.)}
+        bounds_dict = {'AMPA': OrderedDict(), 'NMDA': OrderedDict()}
+        bounds_dict['AMPA']['tau1'] = ( 0.01,  10.0)
+        bounds_dict['AMPA']['tau2'] = ( 0.10,  50.0)
+        bounds_dict['NMDA']['tau1'] = ( 0.01,  20.0)
+        bounds_dict['NMDA']['tau2'] = ( 0.50, 200.0)
+    else:
+        SynapseClass = AMPANMDADMSSynapse
+        synapse_parameter_names = DMS_synapse_parameter_names
+        default_synapse_parameters = default_DMS_synapse_parameters
+        weight_0 = {'AMPA': 3., 'NMDA': 1.}
+        weight_bounds = {'AMPA': (0.1, 20.), 'NMDA':  (0.1, 20.)}
+        bounds_dict = {'AMPA': OrderedDict(), 'NMDA': OrderedDict()}
+        bounds_dict['AMPA']['kon']   = ( 5.0, 100.0)
+        bounds_dict['AMPA']['koff']  = ( 0.1,  10.0)
+        bounds_dict['AMPA']['CC']    = (10.0, 100.0)
+        bounds_dict['AMPA']['CO']    = ( 1.0,  30.0)
+        bounds_dict['AMPA']['Beta']  = (50.0, 200.0)
+        bounds_dict['AMPA']['Alpha'] = (50.0, 200.0)
+        for k,v in bounds_dict['AMPA'].items():
+            bounds_dict['NMDA'][k] = v
+        bounds_dict['NMDA']['CC']    = (2.00, 100.0)
+        bounds_dict['NMDA']['Beta']  = (0.10, 200.0)
+        bounds_dict['NMDA']['Alpha'] = (0.01, 200.0)
 
     delay = 1
     t_event = 700
     window = 200
 
-    synapse = su.AMPANMDASynapse(seg['sec'], seg['seg'].x, 0, [0,0], delay)
+    if with_spine:
+        head_L = 0.5         # [um]
+        head_diam = 0.5      # [um]
+        neck_L = 1.58        # [um]
+        neck_diam = 0.077    # [um]
+        Ra = seg['sec'].Ra
+        spine = Spine(seg['sec'], seg['seg'].x, head_L, head_diam, neck_L, neck_diam, Ra) 
+        spine.instantiate()
+        synapse = SynapseClass(spine.head, 1, 0, [0,0], delay)
+    else:
+        synapse = SynapseClass(seg['sec'], seg['seg'].x, 0, [0,0], delay)
+
     synapse.set_presynaptic_spike_times([t_event])
 
     rec = {'t': neuron.h.Vector(), 'Vsoma': neuron.h.Vector(), 'Vsyn': neuron.h.Vector()}
@@ -381,29 +489,14 @@ def fit_EPSP():
     optim = {}
 
     AMPA_parameters_0 = np.array([parameters['AMPA'][name] for name in synapse_parameter_names])
-    weight_0 = 3.0
     synapse_parameters = {
         'to_optimize': 'AMPA',
-        'weight': weight_0,
+        'weight': weight_0['AMPA'],
         'ampa_nmda_ratio': 0,
         'NMDA': [parameters['NMDA'][name] for name in synapse_parameter_names]
     }
     EPSP_parameters = {'tau_rise': tau_rise['TTX'], 'tau_decay': tau_decay['TTX']}
     neuron.h.tstop = t_event + window
-
-    bounds_dict = {'AMPA': OrderedDict(), 'NMDA': OrderedDict()}
-    bounds_dict['AMPA']['kon']   = ( 5.0, 100.0)
-    bounds_dict['AMPA']['koff']  = ( 0.1,  10.0)
-    bounds_dict['AMPA']['CC']    = (10.0, 100.0)
-    bounds_dict['AMPA']['CO']    = ( 1.0,  30.0)
-    bounds_dict['AMPA']['Beta']  = (50.0, 200.0)
-    bounds_dict['AMPA']['Alpha'] = (50.0, 200.0)
-
-    for k,v in bounds_dict['AMPA'].items():
-        bounds_dict['NMDA'][k] = v
-    bounds_dict['NMDA']['CC']    = (2.00, 100.0)
-    bounds_dict['NMDA']['Beta']  = (0.10, 200.0)
-    bounds_dict['NMDA']['Alpha'] = (0.01, 200.0)
 
     optim['TTX'] = {}
 
@@ -430,9 +523,9 @@ def fit_EPSP():
     synapse_parameters['AMPA'] = AMPA_parameters
     synapse_parameters.pop('to_optimize')
     synapse_parameters.pop('weight')
-    bounds_dict['AMPA']['weight'] = (0.1, 20.0)
+    bounds_dict['AMPA']['weight'] = weight_bounds['AMPA']
     EPSP_parameters['amplitude'] = amplitude['TTX']
-    optim['TTX']['LS'] = least_squares(cost_fit_EPSP, [weight_0], bounds = (0.1, 20.0), \
+    optim['TTX']['LS'] = least_squares(cost_fit_EPSP, [weight_0['AMPA']], bounds = bounds_dict['AMPA']['weight'], \
                                        args = (synapse, synapse_parameters, EPSP_parameters, delay, t_event, \
                                                neuron, rec, window, None), verbose=2)
 
@@ -442,12 +535,12 @@ def fit_EPSP():
     pdf_filename = os.path.splitext(output_file.replace('NMDA_',''))[0] + '.pdf'
     plt.savefig(pdf_filename)
 
+    ampa_nmda_ratio_0 = 5.0
     NMDA_parameters_0 = [parameters['NMDA'][name] for name in synapse_parameter_names]
-    weight_0 = 1
+    NMDA_parameters_0.append(ampa_nmda_ratio_0)
     synapse_parameters = {
         'to_optimize': 'NMDA',
-        'weight': weight_0,
-        'ampa_nmda_ratio': 2.0,
+        'weight': weight_0['NMDA'],
         'AMPA': AMPA_parameters
     }
     EPSP_parameters = {'tau_rise': tau_rise['CTRL'], 'tau_decay': tau_decay['CTRL']}
@@ -458,28 +551,33 @@ def fit_EPSP():
     if not optimize_only_weight:
         func = lambda x: np.sqrt(np.sum(cost_fit_EPSP(x, synapse, synapse_parameters, EPSP_parameters, delay,
                                                       t_event, neuron, rec, window, None) ** 2))
+        bounds = [v for v in bounds_dict['NMDA'].values()]
+        bounds.append((2, 20)) # AMPA/NMDA ratio bounds
         optim['CTRL']['MIN'] = minimize(func, NMDA_parameters_0,
-                                        bounds = [v for v in bounds_dict['NMDA'].values()],
+                                        bounds = bounds,
                                         options = {'maxiter': 100, 'disp': True})
 
-        NMDA_parameters = optim['CTRL']['MIN']['x']
+        NMDA_parameters = optim['CTRL']['MIN']['x'][:-1]
+        ampa_nmda_ratio = optim['CTRL']['MIN']['x'][-1]
 
         fig = plt.figure(figsize=(width, height*2))
         ax = make_axes(n_rows=2)
-        cost_fit_EPSP(NMDA_parameters, synapse, synapse_parameters, EPSP_parameters, \
+        cost_fit_EPSP(optim['CTRL']['MIN']['x'], synapse, synapse_parameters, EPSP_parameters, \
                       delay, t_event, neuron, rec, window, ax[0])
     else:
         NMDA_parameters = NMDA_parameters_0
+        ampa_nmda_ratio = ampa_nmda_ratio_0
         fig = plt.figure(figsize=(width, height))
         ax = make_axes(n_rows=1)
 
     synapse_parameters['NMDA'] = NMDA_parameters
+    synapse_parameters['ampa_nmda_ratio'] = ampa_nmda_ratio
     synapse_parameters.pop('to_optimize')
     synapse_parameters.pop('weight')
-    bounds_dict['NMDA']['weight'] = (0.1, 20.0)
+    bounds_dict['NMDA']['weight'] = weight_bounds['NMDA']
     EPSP_parameters['amplitude'] = amplitude['CTRL']
 
-    optim['CTRL']['LS'] = least_squares(cost_fit_EPSP, [weight_0], bounds = (0.1, 20.0), \
+    optim['CTRL']['LS'] = least_squares(cost_fit_EPSP, [weight_0['NMDA']], bounds = bounds_dict['NMDA']['weight'], \
                                         args = (synapse, synapse_parameters, EPSP_parameters, delay, t_event, \
                                                 neuron, rec, window, None), verbose=2)
 
@@ -489,6 +587,8 @@ def fit_EPSP():
     pdf_filename = os.path.splitext(output_file.replace('AMPA_',''))[0] + '.pdf'
     plt.savefig(pdf_filename)
 
+    import ipdb
+    ipdb.set_trace()
     parameters = {'AMPA_NMDA_ratio': synapse_parameters['ampa_nmda_ratio']}
     for syn_type in ('AMPA','NMDA'):
         parameters[syn_type] = {}
@@ -535,7 +635,7 @@ def cost_fit_IPSP(x, synapse, synapse_parameters, IPSP_parameters, delay, t_even
 
 def fit_IPSP():
     import neuron
-    from dlutils import synapse as su
+    from dlutils.synapse import GABAASynapse
 
     height = 2
     width = 2.5 * height
@@ -547,7 +647,7 @@ def fit_IPSP():
     t_event = 700
     window = 200
 
-    synapse = su.GABAASynapse(seg['sec'], seg['seg'].x, -73, 0, delay)
+    synapse = GABAASynapse(seg['sec'], seg['seg'].x, -73, 0, delay)
     synapse.set_presynaptic_spike_times([t_event])
 
     rec = {'t': neuron.h.Vector(), 'Vsoma': neuron.h.Vector(), 'Vsyn': neuron.h.Vector()}
@@ -862,8 +962,7 @@ def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_fi
            synapse_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell):
 
     import neuron
-    from dlutils import cell as cu
-    from dlutils import synapse as su
+    from dlutils.cell import Cell
 
     if not dend_type in ('apical', 'basal'):
         raise Exception('Unknown dendrite type: "{}"'.format(dend_type))
@@ -871,7 +970,7 @@ def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_fi
     neuron.h.load_file('stdrun.hoc')
     neuron.h.cvode_active(1)
 
-    cell = cu.Cell('CA3_cell_{}_{}'.format(dend_type, segment_index),
+    cell = Cell('CA3_cell_{}_{}'.format(dend_type, segment_index),
                    swc_file, cell_parameters, mechanisms)
     cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
@@ -881,10 +980,12 @@ def worker(segment_index, target, dend_type, max_weight, ampa_nmda_ratio, swc_fi
         segment = cell.apical_segments[segment_index]
 
     if ampa_nmda_ratio >= 0:
-        synapse = su.AMPANMDASynapse(segment['sec'], segment['seg'].x, 0, [0, 0], **synapse_parameters)
+        from dlutils.synapse import AMPANMDADMSSynapse
+        synapse = AMPANMDADMSSynapse(segment['sec'], segment['seg'].x, 0, [0, 0], **synapse_parameters)
         weight_0 = 0.1
     else:
-        synapse = su.GABAASynapse(segment['sec'], segment['seg'].x, -73, 0, **synapse_parameters)
+        from dlutils.synapse import GABAASynapse
+        synapse = GABAASynapse(segment['sec'], segment['seg'].x, -73, 0, **synapse_parameters)
         weight_0 = 5
 
     synapse.set_presynaptic_spike_times([EVENT_TIME])
@@ -1101,13 +1202,13 @@ if __name__ == '__main__':
 
 
     import neuron
-    from dlutils import cell as cu
+    from dlutils.cell import Cell
 
     # the file containing the morphology of the cell
     swc_file = args.swc_file
 
     # instantiate a cell to see how many basal and apical compartments it contains
-    cell = cu.Cell('CA3_cell' , swc_file, cell_parameters, mechanisms)
+    cell = Cell('CA3_cell' , swc_file, cell_parameters, mechanisms)
     cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
     # the basal and apical compartments

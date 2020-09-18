@@ -121,7 +121,7 @@ if __name__ == '__main__':
     elif args.model_type.lower() == 'passive':
         passive = True
         with_TTX = False
-    elif args.model_type == 'active':
+    elif args.model_type.lower() == 'active':
         passive = False
         with_TTX = False
     else:

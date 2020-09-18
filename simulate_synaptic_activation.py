@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from neuron import h
 from dlutils import synapse as su
+from dlutils import cell as cu
 from dlutils import utils
 import pickle
 import json
@@ -156,8 +157,8 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
     else:
         spike_times = {}
 
-    Nev = int(duration*rate*1e-3)*2  # dur is in ms
-    cnt = 1
+    Nev = np.max([1, int(duration * rate * 1e-3) * 2])  # duration is in ms
+    cnt = 0
     for synapse_group in synapses.values():
         for syn in synapse_group:
             try:
@@ -165,25 +166,65 @@ def set_presynaptic_spike_times(synapses, rate, duration, delay, spike_times_fil
                 if verbose:
                     print('{:03d} > setting presynaptic spike times from file.'.format(cnt))
             except:
-                ISIs = -np.log(np.random.uniform(size=Nev))/rate
-                spks = delay + np.cumsum(ISIs)*1e3
+                rnd = np.random.uniform(size=Nev)
+                ISIs = -np.log(rnd) / rate
+                spks = delay + np.cumsum(ISIs) * 1e3
                 if verbose:
                     print('{:03d} > generated presynaptic spike times from scratch.'.format(cnt))
-            syn.set_presynaptic_spike_times(spks[spks < delay+duration])
-            cnt += 1
+            spks = spks[spks < delay + duration]
+            cnt += len(spks)
+            if len(spks) > 0:
+                syn.set_presynaptic_spike_times(spks)
+                print(spks)
+    return cnt
 
 
 def simulate_synaptic_activation(swc_file, cell_parameters, mechanisms, replace_axon, add_axon_if_missing, passive_cell, \
-                                 synapse_parameters, distr_name, mean, std, scaling, rate, delay, dur, rnd_seed=None, \
-                                 spikes_file=None, do_plot=False, verbose=False):
+                                 exc_syn_parameters, inh_syn_parameters, exc_rate, inh_rate, delay, dur, rnd_seed=None, \
+                                 do_plot=False, verbose=False):
 
-    cell,synapses = su.build_cell_with_synapses(swc_file, cell_parameters, mechanisms, replace_axon, \
-                                                add_axon_if_missing, passive_cell, synapse_parameters, \
-                                                distr_name, mean, std, scaling, slm_border=100.)
+    cell = cu.Cell('CA3_cell_%d' % int(np.random.uniform()*1e5), swc_file, cell_parameters, mechanisms)
+    cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
-    recorders,coords,apc = make_recorders(cell, synapses, bifurcation=True, full=False)
+    segments = {'basal': cell.basal_segments, 'apical': cell.apical_segments}
 
-    set_presynaptic_spike_times(synapses, rate, dur, delay, spikes_file, rnd_seed, verbose)
+    synapses = {'excitatory': {}, 'inhibitory': {}}
+
+    n_basal = len(exc_syn_parameters['segments_index']['EPSP']['basal'])
+    n_apical = len(exc_syn_parameters['segments_index']['EPSP']['apical'])
+    print('There are {} basal and {} apical excitatory synapses, for a total of {} synapses.'.format(n_basal, n_apical, n_basal+n_apical))
+
+    synapse_parameters = exc_syn_parameters['synapse_parameters']['EPSP']
+    synapse_parameters.pop('AMPA_NMDA_ratio')
+    ampa_nmda_ratio = exc_syn_parameters['ampa_nmda_ratio']
+    for dend_type in segments:
+        synapses['excitatory'][dend_type] = []
+        for index,weight in zip(exc_syn_parameters['segments_index']['EPSP'][dend_type],
+                                exc_syn_parameters['weights']['EPSP'][dend_type]):
+            segment = segments[dend_type][index]
+            syn = su.AMPANMDASynapse(segment['sec'], segment['seg'].x, 0,
+                                     [weight, weight*ampa_nmda_ratio], **synapse_parameters)
+            synapses['excitatory'][dend_type].append(syn)
+
+    n_basal = len(inh_syn_parameters['segments_index']['IPSP']['basal'])
+    n_apical = len(inh_syn_parameters['segments_index']['IPSP']['apical'])
+    print('There are {} basal and {} apical inhibitory synapses, for a total of {} synapses.'.format(n_basal, n_apical, n_basal+n_apical))
+
+    synapse_parameters = inh_syn_parameters['synapse_parameters']['IPSP']
+    for dend_type in segments:
+        synapses['inhibitory'][dend_type] = []
+        for index,weight in zip(inh_syn_parameters['segments_index']['IPSP'][dend_type],
+                                inh_syn_parameters['weights']['IPSP'][dend_type]):
+            segment = segments[dend_type][index]
+            syn = su.GABAASynapse(segment['sec'], segment['seg'].x, -73, weight, **synapse_parameters)
+            synapses['inhibitory'][dend_type].append(syn)
+
+    recorders,coords,apc = make_recorders(cell, synapses=None, bifurcation=False, full=False)
+
+    n_exc_spikes = set_presynaptic_spike_times(synapses['excitatory'], exc_rate, dur, delay, None, rnd_seed, verbose)
+    print('Added a total of {} excitatory presynaptic spikes.'.format(n_exc_spikes))
+    n_inh_spikes = set_presynaptic_spike_times(synapses['inhibitory'], inh_rate, dur, delay, None, rnd_seed+1, verbose)
+    print('Added a total of {} inhibitory presynaptic spikes.'.format(n_inh_spikes))
 
     # run the simulation
     start = time.time()
@@ -191,7 +232,7 @@ def simulate_synaptic_activation(swc_file, cell_parameters, mechanisms, replace_
     sys.stdout.write('%02d/%02d %02d:%02d:%02d >> ' % (now.tm_mon,now.tm_mday,now.tm_hour,now.tm_min,now.tm_sec))
     sys.stdout.flush()
     h.cvode_active(1)
-    h.tstop = dur + delay*2
+    h.tstop = dur + 2 * delay
     h.run()
     sys.stdout.write('elapsed time: %d seconds.\n' % (time.time()-start))
 
@@ -212,8 +253,10 @@ def main():
     parser.add_argument('-f','--swc-file', type=str, help='SWC file defining the cell morphology', required=True)
     parser.add_argument('-p','--cell-params', type=str, default=None, required=True,
                         help='JSON file containing the parameters of the cell')
-    parser.add_argument('-s','--synapse-params', type=str, default=None, required=True,
-                        help='JSON file containing the parameters of the synapses')
+    parser.add_argument('--exc-syn-params', type=str, default=None, required=True,
+                        help='PKL file containing the parameters of the excitatory synapses')
+    parser.add_argument('--inh-syn-params', type=str, default=None, required=True,
+                        help='PKL file containing the parameters of the inhibitory synapses')
     parser.add_argument('-m','--mech-file', type=str, default=None,
                         help='JSON file containing the mechanisms to be inserted into the cell')
     parser.add_argument('-c','--config-file', type=str, default=None,
@@ -227,15 +270,11 @@ def main():
     parser.add_argument('--model-type', type=str, default='active',
                         help='whether to use a passive or active model (accepted values: "active" (default) or "passive")')
     parser.add_argument('--output-dir', type=str, default='.', help='Output directory (default: .)')
-    parser.add_argument('--distr', default=None, type=str, help='type of distribution of the synaptic weights (accepted values are normal or lognormal)')
-    parser.add_argument('--mean', type=float, help='Mean of the distribution of synaptic weights')
-    parser.add_argument('--std', type=float, help='Standard deviation of the distribution of synaptic weights')
-    parser.add_argument('--scaling', default=1., type=float, help='AMPA/NMDA scaling')
-    parser.add_argument('--rate', type=float, help='Firing rate of the presynaptic cells')
+    parser.add_argument('--exc-rate', type=float, help='Firing rate of the excitatory presynaptic cells')
+    parser.add_argument('--inh-rate', type=float, help='Firing rate of the inhibitory presynaptic cells')
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=2000., type=float, help='stimulation duration (default: 2000 ms)')
     parser.add_argument('--seed', default=None, type=str, help='The seed of the random number generator')
-    parser.add_argument('--spikes-file', default=None, type=str, help='File containing presynaptic spike times')
     parser.add_argument('--plot', action='store_true', help='show a plot (default: no)')
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose (default: no)')
     args = parser.parse_args(args=sys.argv[1:])
@@ -249,10 +288,15 @@ def main():
         sys.exit(1)
     cell_parameters = json.load(open(args.cell_params, 'r'))
 
-    if not os.path.isfile(args.synapse_params):
-        print('{}: {}: no such file.'.format(progname,args.synapse_params))
+    if not os.path.isfile(args.exc_syn_params):
+        print('{}: {}: no such file.'.format(progname,args.exc_syn_params))
         sys.exit(1)
-    synapse_parameters = json.load(open(args.synapse_params, 'r'))
+    exc_synapse_parameters = pickle.load(open(args.exc_syn_params, 'rb'))
+
+    if not os.path.isfile(args.inh_syn_params):
+        print('{}: {}: no such file.'.format(progname,args.inh_syn_params))
+        sys.exit(1)
+    inh_synapse_parameters = pickle.load(open(args.inh_syn_params, 'rb'))
 
     if args.mech_file is not None:
         if not os.path.isfile(args.mech_file):
@@ -267,10 +311,6 @@ def main():
             print('--cell-name must be present with --config-file option.')
             sys.exit(1)
         mechanisms = utils.extract_mechanisms(args.config_file, args.cell_name)
-
-    if args.spikes_file is not None and not os.path.isfile(args.spikes_file):
-        print('{}: {}: no such file.'.format(progname, args.spikes_file))
-        sys.exit(1)
 
     try:
         sim_pars = pickle.load(open('simulation_parameters.pkl','rb'))
@@ -315,13 +355,16 @@ def main():
         print('Unknown value for --model-type: "{}". Accepted values are `active` and `passive`.'.format(args.model_type))
         sys.exit(9)
 
+    seed = int(args.seed) if args.seed is not None else None
+
     recorders,coords,synapses = simulate_synaptic_activation(args.swc_file, cell_parameters, mechanisms, \
                                                              replace_axon, add_axon_if_missing, passive_cell, \
-                                                             synapse_parameters, args.distr, args.mean, args.std, \
-                                                             args.scaling, args.rate, args.delay, args.dur, \
-                                                             args.seed, args.spikes_file, args.plot, args.verbose)
+                                                             exc_synapse_parameters, inh_synapse_parameters, \
+                                                             args.exc_rate, args.inh_rate, args.delay, args.dur, \
+                                                             seed, args.plot, args.verbose)
     
-    save_data(recorders,coords,synapses,args)
+    # this needs to be fixed (potentially)
+    save_data(recorders, coords, synapses, args)
     
 
 if __name__ == '__main__':
