@@ -192,34 +192,56 @@ if __name__ == '__main__':
         print('{} exists: use -f to force overwrite.'.format(output_file))
         sys.exit(9)
 
-    ss = args.segment.split('[')
-    dendrite = ss[0]
-    ss = ss[1].split(']')
-    section_num = int(ss[0])
-    segment_x = float(ss[1][1:-1])
+    if '[' in args.segment:
+        ss = args.segment.split('[')
+        dendrite = ss[0]
+        ss = ss[1].split(']')
+        section_num = int(ss[0])
+        segment_x = float(ss[1][1:-1])
+        # segment selection mode: section x
+        seg_sel_mode = 'sec_x'
+    elif '{' in args.segment:
+        ss = args.segment.split('{')
+        dendrite = ss[0]
+        segment_num = int(ss[1][:-1])
+        # segment selection mode: sequential
+        seg_sel_mode = 'seq'
+    else:
+        print('Unable to interpret `{}`.'.format(args.segment))
+        sys.exit(10)
 
     if dendrite not in ('apical','basal'):
         print('segment must be located either on basal or apical dendrites.')
-        sys.exit(10)
+        sys.exit(11)
 
     ### Instantiate the cell
     cell = Cell('CA3_cell_%d' % int(np.random.uniform()*1e5), args.swc_file, parameters, mechanisms)
     cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive, TTX=with_TTX)
 
-    if dendrite == 'apical':
-        section = cell.morpho.apic[section_num]
-        all_segments = cell.apical_segments
-    elif dendrite == 'basal':
-        section = cell.morpho.dend[section_num]
-        all_segments = cell.basal_segments
+    if seg_sel_mode == 'sec_x':
+        
+        if dendrite == 'apical':
+            section = cell.morpho.apic[section_num]
+            all_segments = cell.apical_segments
+        elif dendrite == 'basal':
+            section = cell.morpho.dend[section_num]
+            all_segments = cell.basal_segments
 
-    segment = section(segment_x)
+        segment = section(segment_x)
 
-    for seg in all_segments:
-        if seg['seg'] == segment:
-            break
+        for seg in all_segments:
+            if seg['seg'] == segment:
+                break
 
+    elif seg_sel_mode == 'seq':
+
+        if dendrite == 'apical':
+            seg = cell.apical_segments[segment_num]
+            segment = seg['seg']
+            section = seg['sec']
+    
     segment_dst = seg['dst']
+    segment_center = seg['center']
     segment_diam = segment.diam
     segment_branch_order = branch_order(section)
 
@@ -319,8 +341,8 @@ if __name__ == '__main__':
     ax.set_xlabel('Time (ms)')
     ax.set_ylabel('Vm (mV)');
     ax.set_xlim([t_onset['dend'] - 20, t_end])
-    v = np.array(rec['dend'])
-    ax.set_ylim([v[-1] - 5, np.max(v) + 5])
+    v = np.concatenate([np.array(rec[loc]) for loc in ('spine', 'dend', 'soma')])
+    ax.set_ylim([v[-1] - 5, v.max() + 5])
     plt.savefig(output_folder + '/EPSPs_' + suffix + '.pdf')
     if not args.quiet:
         plt.show()
@@ -356,11 +378,17 @@ if __name__ == '__main__':
 
     data = {'dend_to_spine_dV': dend_to_spine_dV, 'spine_to_dend_dV': spine_to_dend_dV,
             'AR': AR, 'R_dend': R_dend, 'R_neck': R_neck, 'target_dV': target_dV, 'model_type': args.model_type,
-            'weights': weights, 'cost_fun': c, 'section_num': section_num, 'segment_x': segment_x,
+            'weights': weights, 'cost_fun': c, 'seg_sel_mode': seg_sel_mode, 'dend_center': segment_center,
             'Ra': Ra, 'passive': passive, 'with_TTX': with_TTX, 'target_dV': args.target_dV,
             'head_L': head_L, 'head_diam': head_diam, 'neck_L': neck_L, 'neck_diam': neck_diam,
             'spine_dst': segment_dst, 'dend_diam': segment_diam, 'dend_branch_order': segment_branch_order,
             'swc_file': os.path.abspath(args.swc_file), 'params_file': os.path.abspath(args.params_file)}
+
+    if seg_sel_mode == 'sec_x':
+        data['section_num'] = section_num
+        data['segment_x'] = segment_x
+    elif seg_sel_mode == 'seq':
+        data['segment_num'] = segment_num
 
     pickle.dump(data, open(output_file, 'wb'))
 
