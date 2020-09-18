@@ -229,19 +229,25 @@ if __name__ == '__main__':
 
         segment = section(segment_x)
 
-        for seg in all_segments:
-            if seg['seg'] == segment:
+        for segment_num in range(len(all_segments)):
+            if all_segments[segment_num]['seg'] == segment:
                 break
 
     elif seg_sel_mode == 'seq':
 
         if dendrite == 'apical':
             seg = cell.apical_segments[segment_num]
+            all_sections = cell.morpho.apic
         elif dendrite == 'basal':
             seg = cell.basal_segments[segment_num]
+            all_sections = cell.morpho.dend
 
         segment = seg['seg']
         section = seg['sec']
+        segment_x = segment.x
+        for section_num in range(len(all_sections)):
+            if all_sections[section_num] == section:
+                break
     
     segment_dst = seg['dst']
     segment_center = seg['center']
@@ -385,13 +391,8 @@ if __name__ == '__main__':
             'Ra': Ra, 'passive': passive, 'with_TTX': with_TTX, 'target_dV': args.target_dV,
             'head_L': head_L, 'head_diam': head_diam, 'neck_L': neck_L, 'neck_diam': neck_diam,
             'spine_dst': segment_dst, 'dend_diam': segment_diam, 'dend_branch_order': segment_branch_order,
-            'swc_file': os.path.abspath(args.swc_file), 'params_file': os.path.abspath(args.params_file)}
-
-    if seg_sel_mode == 'sec_x':
-        data['section_num'] = section_num
-        data['segment_x'] = segment_x
-    elif seg_sel_mode == 'seq':
-        data['segment_num'] = segment_num
+            'swc_file': os.path.abspath(args.swc_file), 'params_file': os.path.abspath(args.params_file),
+            'section_num': section_num, 'segment_x': segment_x, 'segment_num': segment_num}
 
     pickle.dump(data, open(output_file, 'wb'))
 
