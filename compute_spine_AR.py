@@ -237,8 +237,11 @@ if __name__ == '__main__':
 
         if dendrite == 'apical':
             seg = cell.apical_segments[segment_num]
-            segment = seg['seg']
-            section = seg['sec']
+        elif dendrite == 'basal':
+            seg = cell.basal_segments[segment_num]
+
+        segment = seg['seg']
+        section = seg['sec']
     
     segment_dst = seg['dst']
     segment_center = seg['center']
