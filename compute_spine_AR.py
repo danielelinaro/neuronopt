@@ -210,7 +210,7 @@ if __name__ == '__main__':
         section = cell.morpho.apic[section_num]
         all_segments = cell.apical_segments
     elif dendrite == 'basal':
-        section = cell.morpho.basal[section_num]
+        section = cell.morpho.dend[section_num]
         all_segments = cell.basal_segments
 
     segment = section(segment_x)
@@ -247,7 +247,7 @@ if __name__ == '__main__':
     ### Show where the spine is located on the dendritic tree
     plt.figure(figsize=(2,2))
     ax = plt.axes([0.15, 0.15, 0.8, 0.8])
-    for sec in chain(cell.morpho.apic, cell.morpho.basal):
+    for sec in chain(cell.morpho.apic, cell.morpho.dend):
         if sec in cell.morpho.apic:
             color = 'k'
         else:
@@ -355,11 +355,12 @@ if __name__ == '__main__':
     print('R_neck: {:.1f} MOhm.'.format(R_neck))
 
     data = {'dend_to_spine_dV': dend_to_spine_dV, 'spine_to_dend_dV': spine_to_dend_dV,
-            'AR': AR, 'R_dend': R_dend, 'R_neck': R_neck, 'target_dV': target_dV,
+            'AR': AR, 'R_dend': R_dend, 'R_neck': R_neck, 'target_dV': target_dV, 'model_type': args.model_type,
             'weights': weights, 'cost_fun': c, 'section_num': section_num, 'segment_x': segment_x,
             'Ra': Ra, 'passive': passive, 'with_TTX': with_TTX, 'target_dV': args.target_dV,
             'head_L': head_L, 'head_diam': head_diam, 'neck_L': neck_L, 'neck_diam': neck_diam,
-            'spine_dst': segment_dst, 'dend_diam': segment_diam, 'dend_branch_order': segment_branch_order}
+            'spine_dst': segment_dst, 'dend_diam': segment_diam, 'dend_branch_order': segment_branch_order,
+            'swc_file': os.path.abspath(args.swc_file), 'params_file': os.path.abspath(args.params_file)}
 
     pickle.dump(data, open(output_file, 'wb'))
 
