@@ -231,6 +231,7 @@ if __name__ == '__main__':
 
         for segment_num in range(len(all_segments)):
             if all_segments[segment_num]['seg'] == segment:
+                seg = all_segments[segment_num]
                 break
 
     elif seg_sel_mode == 'seq':
@@ -332,7 +333,7 @@ if __name__ == '__main__':
     target_dV = {k: args.target_dV for k in locations}
     opt = minimize(lambda x: cost(x, target_dV, vec, time, EPSP, rec, t_onset), \
                    weights_0, \
-                   bounds = [(0,1), (0,1)], \
+                   bounds = [(5e-3,1), (5e-3,1)], \
                    options = {'maxiter': args.max_iter, 'disp': True})
 
     locations.append('soma')
@@ -350,8 +351,8 @@ if __name__ == '__main__':
     ax.set_xlabel('Time (ms)')
     ax.set_ylabel('Vm (mV)');
     ax.set_xlim([t_onset['dend'] - 20, t_end])
-    v = np.concatenate([np.array(rec[loc]) for loc in ('spine', 'dend', 'soma')])
-    ax.set_ylim([v[-1] - 5, v.max() + 5])
+    v = np.array([np.array(rec[loc]) for loc in ('spine', 'dend', 'soma')])
+    ax.set_ylim([v[:,-1].min() - 2, v.max() + 5])
     plt.savefig(output_folder + '/EPSPs_' + suffix + '.pdf')
     if not args.quiet:
         plt.show()

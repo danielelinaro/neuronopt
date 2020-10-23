@@ -47,9 +47,10 @@ class Spine (object):
             diams[i] = sec.diam3d(i)
             norm_arclength[i] = sec.arc3d(i) / sec.L
         idx = np.argmin(np.abs(norm_arclength - x))
-
         N = 3
-        points = coords[idx-N : idx+N+1, :]
+        start = np.max([idx-N, 0])
+        stop = np.min([idx+N+1, coords.shape[0]-1])
+        points = coords[start : stop, :]
         lengths = diams[idx] + np.array([0, neck_L, neck_L, head_L+neck_L])
         self._points = make_spine_coords(points, lengths)
         if neck_diam is None:

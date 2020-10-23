@@ -82,14 +82,20 @@ class Cell (object):
             if DEBUG:
                 print('Setting the number of segments using the d_lambda rule.')
             for sec in morpho.all:
-                sec.nseg = int((sec.L/(0.1*h.lambda_f(100,sec=sec))+0.9)/2)*2 + 1
+                if 'soma' in sec.name():
+                    sec.nseg = 1
+                else:
+                    sec.nseg = int((sec.L / (0.1 * h.lambda_f(100, sec=sec)) +0.9) / 2) * 2 + 1
                 if DEBUG:
                     print('%s: length = %g um, nseg = %d.' % (sec.name(),sec.L,sec.nseg))
         else:
             if DEBUG:
                 print('Setting the number of segments using only section length.')
             for sec in morpho.all:
-                sec.nseg = 1 + 2 * int(sec.L/40)
+                if 'soma' in sec.name():
+                    sec.nseg = 1
+                else:
+                    sec.nseg = 1 + 2 * int(sec.L/40)
                 if DEBUG:
                     print('%s: length = %g um, nseg = %d.' % (sec.name(),sec.L,sec.nseg))
 
