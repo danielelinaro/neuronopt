@@ -201,9 +201,11 @@ if __name__ == '__main__':
     parser.add_argument('--delay', default=500., type=float, help='delay before stimulation onset (default: 500 ms)')
     parser.add_argument('--dur', default=500., type=float, help='stimulation duration (default: 500 ms)')
     parser.add_argument('--serial', action='store_true', help='do not use SCOOP')
-    parser.add_argument('--trial-run', action='store_true', help='measure impedance in a random sample of 10 basal and 10 apical synapses')
+    parser.add_argument('--trial-run', action='store_true', help='measure impedance in a random sample of 3 basal and 3 apical synapses')
     parser.add_argument('--model-type', type=str, default='active',
                         help='whether to use a passive or active model (accepted values: "active" (default) or "passive")')
+    parser.add_argument('--plot', type=str, default='yes',
+                        help='whether to plot a summary figure (accepted values: "yes" (default) or "no")')
 
     args = parser.parse_args(args=sys.argv[1:])
 
@@ -254,7 +256,7 @@ if __name__ == '__main__':
         if len(params_files) > 0:
             print('You cannot simultaneously specify parameter and pickle files.')
             sys.exit(1)
-        population = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
+        population,individual_ids = individuals_from_pickle(args.pickle_file, args.config_file, cell_name, args.evaluator_file)
         working_dir = os.path.split(args.pickle_file)[0]
 
     if working_dir == '':
@@ -346,7 +348,7 @@ if __name__ == '__main__':
     
         idx = {k: np.arange(v) for k,v in N.items()}
         if args.trial_run:
-            idx = {k: np.random.choice(v, size=10, replace=False) for k,v in idx.items()}
+            idx = {k: np.random.choice(v, size=3, replace=False) for k,v in idx.items()}
 
         neuron.h('forall delete_section()')
 
@@ -389,10 +391,11 @@ if __name__ == '__main__':
             suffix = os.path.splitext(os.path.basename(params_files[i]))[0]
         else:
             data['pickle_file'] = args.pickle_file
-            data['individual'] = i
-            suffix = 'pkl_individual_{}'.format(i)
+            data['individual'] = individual_ids[i]
+            suffix = 'individual_{}'.format(individual_ids[i])
 
         outfile = working_dir + '/' + cell_name + '_impedance_' + suffix + '_' + args.model_type + '.pkl'
         pickle.dump(data, open(outfile, 'wb'))
-        plot(outfile)
+        if args.plot.lower() in ('yes', 'y'):
+            plot(outfile)
 

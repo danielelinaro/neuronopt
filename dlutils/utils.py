@@ -153,8 +153,10 @@ def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_fil
     try:
         data = pickle.load(open(pkl_file,'rb'))
         population = data['good_population']
+        individual_ids = np.r_[data['good_individuals_hof'], data['good_individuals']]
     except:
         population = np.array(pickle.load(open(pkl_file,'rb'), encoding='latin1'))
+        individual_ids = np.arange(population.shape[0])
 
     evaluator = pickle.load(open(evaluator_file,'rb'))
 
@@ -165,7 +167,7 @@ def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_fil
         default_parameters = None
         config = json.load(open(config_file,'r'))[cell_name]
 
-    return build_parameters_dict(population, evaluator, config, default_parameters)
+    return build_parameters_dict(population, evaluator, config, default_parameters), individual_ids
 
 
 
