@@ -14,6 +14,8 @@
 .DS_Store
 x86_64
 *.mod
+*.xls
+*.xlsx
 __pycache__
 !mechanisms/*.mod
 !mechanisms_hbp/*.mod

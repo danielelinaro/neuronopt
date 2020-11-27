@@ -38,6 +38,8 @@ def collect_folders(folder_patterns, cells_to_exclude, fun, base_folder='.', ver
 def load_population_data(folder_list, n_stds=5, flatten=True):
     populations = {}
     groups = {}
+    param_names = {}
+    param_bounds = {}
     for key in folder_list:
         for i,folder in enumerate(folder_list[key]):
             infile = folder + '/good_population_{}_STDs.pkl'.format(n_stds)
@@ -46,13 +48,16 @@ def load_population_data(folder_list, n_stds=5, flatten=True):
             if not key in populations:
                 populations[key] = data
                 groups[key] = np.zeros(data.shape[0])
+                evaluator = pickle.load(open(folder + '/evaluator.pkl', 'rb'))
+                param_names[key] = evaluator.param_names
+                param_bounds[key] = np.array([par.bounds for par in evaluator.params])
             else:
                 populations[key] = np.concatenate((populations[key],data),axis=0)
                 groups[key] = np.concatenate((groups[key], i+np.zeros(data.shape[0])))
     if flatten:
         populations = np.concatenate(list(populations.values())).T
         groups = np.concatenate(list(groups.values()))
-    return populations,groups
+    return populations, groups, param_names, param_bounds
 
 
 def load_backprop_data(folder_list):

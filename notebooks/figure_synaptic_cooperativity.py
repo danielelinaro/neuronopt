@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import btmorph
+import pandas as pd
 
 matplotlib.rc('font', **{'family': 'sans-serif', 'sans-serif': 'Arial', 'size': 8})
 matplotlib.rc('axes', **{'linewidth': 0.7})
@@ -91,10 +92,15 @@ if __name__ == '__main__':
     ax_morpho.text(xlim[1] - dx/20, 50, r'$100\,\mu\mathrm{m}$', rotation=90, \
                    horizontalalignment='center', verticalalignment='center')
 
+    df = {}
+
     t = data['t']
     Vspine = data['Vspine']
     Vdend = data['Vdend']
     idx = (t > 990) & (t < 1200)
+    df['Amplitude ratio'] = pd.DataFrame(data = {'Time from input': t[idx] - 1000,
+                                                 'Vm spine': Vspine[0,idx],
+                                                 'Vm dendrite': Vdend[0,idx]})
     ax_AR.plot(t[idx] - 1000, Vspine[0,idx], 'k', label='Spine', lw=1)
     ax_AR.plot(t[idx] - 1000, Vdend[0,idx], 'r', label='Dendrite', lw=1)
     ax_AR.legend(loc='best')
@@ -122,11 +128,21 @@ if __name__ == '__main__':
     ms = 4
     cmap = plt.get_cmap('viridis', n_spines)
     window = [10, 100]
+    cnt = 1
+    df['Time series'] = pd.DataFrame()
     for i,spk in enumerate(spike_times[0][:n_spines]):
         idx = (t > spk - window[0]) & (t < spk + window[1])
         ax[0][0].plot(t[idx] - spk, Vdend[0,idx], color=cmap(i), linewidth=1)
         ax[1][0].plot(t[idx] - spk, Vsoma[idx], color=cmap(i), linewidth=1)
         ax[2][0].plot(t[idx] - spk, gnmda[0,idx] * MgBlock[0,idx], color=cmap(i), linewidth=1)
+        df['Time series'] = pd.concat([df['Time series'],
+                                       pd.DataFrame(data = {
+                                           'Time from input [{}]'.format(cnt): t[idx] - spk,
+                                           'Vm dendrite [{}]'.format(cnt): Vdend[0,idx],
+                                           'Vm soma [{}]'.format(cnt): Vsoma[idx],
+                                           'NMDA conductance [{}]'.format(cnt): gnmda[0,idx] * MgBlock[0,idx]})],
+                                      axis=1)
+        cnt += 1
     for i,spk in enumerate(spike_times[0][:n_spines]):
         ax[0][0].plot(t[V_dend_pks[i]] - spk, Vdend[0,V_dend_pks[i]], 'ro', \
                       markersize=ms, markerfacecolor='w', markeredgewidth=1)
@@ -152,7 +168,33 @@ if __name__ == '__main__':
             ax.plot(a + np.zeros(2), m + s * np.array([-1,1]), color, **kwargs)
         ax.plot(x, y_mean, color + marker + '-', label=lbl, **kwargs)
 
-    ax[0][1].plot(n, n * dV_dend.mean(axis=0)[0], 'rs-', lw=1, markerfacecolor='w', markersize=ms, label='Linear prediction')
+    def make_dataframe(data, with_linear_prediction=True):
+        df = pd.DataFrame(data = data, index=np.arange(1, data.shape[0] + 1),
+                           columns=['Individual {}'.format(i) for i in range(1, data.shape[1] + 1)])
+        df['Mean'] = data.mean(axis=1)
+        df['Std'] = data.std(axis=1)
+        df['SEM'] = data.std(axis=1) / np.sqrt(data.shape[1])
+        if with_linear_prediction:
+            df['Linear prediction'] = (1 + np.arange(data.shape[0])) * data.mean(axis=1)[0]
+        return df
+
+    df['Dendritic EPSP'] = make_dataframe(dV_dend.T)
+    df['Somatic EPSP'] = make_dataframe(dV_soma.T)
+    df['NMDA conductance'] = make_dataframe(dG_NMDA.T, False)
+    df['NMDA conductance']['AMPA conductance'] = dG_AMPA[0] + np.zeros(dG_NMDA.shape[1])
+
+    try:
+        for key in df:
+            with pd.ExcelWriter('synaptic_cooperativity_{}.xlsx'.format(data['config']['cell_type']), mode='a') as writer:
+                if 'EPSP' in key or 'NMDA' in  key:
+                    df[key].to_excel(writer, key, index=True)
+                else:
+                    df[key].to_excel(writer, key, index=False)
+    except:
+        print('Did not save data to Excel file.')
+        
+    ax[0][1].plot(n, n * dV_dend.mean(axis=0)[0], 'rs-', lw=1, markerfacecolor='w', markersize=ms,
+                  label='Linear prediction')
     plot_mean_sem(n, dV_dend, ax[0][1], 'k', 'o', 'Measured', lw=1, markerfacecolor='w', markersize=ms)
 
     ax[1][1].plot(n, n * dV_soma.mean(axis=0)[0], 'rs-', lw=1, markerfacecolor='w', markersize=ms)
