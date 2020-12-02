@@ -470,6 +470,7 @@ def clean():
     plt.show()
 
 
+
 ############################################################
 ###                      ANALYSE                         ###
 ############################################################
@@ -604,6 +605,133 @@ def analyse():
     plt.plot(x, y, 'r--')
     plt.show()
 
+
+
+############################################################
+###                    TAG-BRANCHES                      ###
+############################################################
+
+
+def tag_branches():
+    import matplotlib.pyplot as plt
+    from dlutils.morpho import find_terminal_and_oblique_branches, plot_tree
+    from dlutils.cell import Cell
+
+    parser = arg.ArgumentParser(description='Tag oblique and terminal branches of a morphology',
+                                prog=progname+' tag-branches')
+    parser.add_argument('swc_file', type=str, action='store', help='SWC file')
+    parser.add_argument('-e', '--min-end-point', default=0, type=float, \
+                        help='minimum y coordinate of the end point of a branch to be considered oblique')
+    parser.add_argument('-E', '--max-end-point', default=240, type=float, \
+                        help='maximum y coordinate of the end point of a branch to be considered oblique')
+    parser.add_argument('-a', '--max-angle', default=70, type=float, \
+                        help='maximum angle for a branch to be considered oblique')
+    parser.add_argument('-A', '--apical-only', action='store_true', help='Tag only points on terminal branches on the apical dendrite')
+    parser.add_argument('-B', '--basal-only', action='store_true', help='Tag only points on terminal branches on the basal dendrite')
+    parser.add_argument('-T', '--terminal-only', action='store_true', help='Tag only points on terminal branches')
+    parser.add_argument('-O', '--oblique-only', action='store_true', help='Tag only points on oblique branches')
+    parser.add_argument('-P', '--plot', action='store_true', help='Plot the tagged morphology')
+    
+    args = parser.parse_args(args=sys.argv[2:])
+
+    swc_file = args.swc_file
+    if not os.path.isfile(swc_file):
+        print('{}: {}: no such file.'.format(progname, swc_file))
+        return
+
+    if args.apical_only and args.basal_only:
+        print('Options --apical-only and --basal-only are mutually exclusive.')
+        return
+
+    if args.terminal_only and args.oblique_only:
+        print('Options --terminal-only and --oblique-only are mutually exclusive.')
+        return
+
+    if args.basal_only:
+        point_types = SWC_types['basal'],
+    elif args.apical_only:
+        point_types = SWC_types['apical'],
+    else:
+        point_types = SWC_types['basal'], SWC_types['apical']
+
+    if args.terminal_only:
+        branch_types = 'terminal',
+    elif args.oblique_only:
+        branch_types = 'oblique',
+        point_types = SWC_types['apical'],
+    else:
+        branch_types = ('terminal', 'oblique')
+
+    if args.oblique_only and args.basal_only:
+        print('There are no oblique branches on the basal dendrite.')
+        return
+    
+    if args.oblique_only and args.apical_only:
+        print('Option --apical-only is redundant when --oblique-only is specified.')
+
+    tree = find_terminal_and_oblique_branches(swc_file, point_types, branch_types,
+                                              end_point_limits = [args.min_end_point, args.max_end_point],
+                                              max_angle = args.max_angle)
+
+    tree_list = [node for node in tree]
+    tree_coords = np.array([node.content['p3d'].xyz for node in tree])
+    
+    cell = Cell('cell', swc_file, parameters=[], mechanisms=[])
+    cell.instantiate(replace_axon = False,
+                     add_axon_if_missing = False,
+                     use_dlambda_rule = False,
+                     force_passive = True,
+                     TTX = False)
+
+    print('Number of  basal compartments: {:3d}.'.format(len(cell.basal_segments)))
+    print('Number of apical compartments: {:3d}.'.format(len(cell.apical_segments)))
+
+    folder,filename = os.path.split(swc_file)
+    if folder == '':
+        folder = '.'
+    suffix = os.path.splitext(filename)[0]
+
+    if SWC_types['basal'] in point_types:
+        on_terminal_branches = []
+        for i,seg in enumerate(cell.basal_segments):
+            idx = np.sum((tree_coords - seg['center']) ** 2, axis=1).argmin()
+            node = tree_list[idx]
+            if node.content['on_terminal_branch']:
+                on_terminal_branches.append(i)
+        with open(folder + '/' + suffix + '_basal_terminal.txt', 'w') as fid:
+            for i in on_terminal_branches:
+                fid.write('{:3d}\n'.format(i))
+        print('{} out of {} basal compartments are on terminal branches.'.format(len(on_terminal_branches), len(cell.basal_segments)))
+
+    if SWC_types['apical'] in point_types:
+        on_terminal_branches = []
+        on_oblique_branches = []
+        for i,seg in enumerate(cell.apical_segments):
+            idx = np.sum((tree_coords - seg['center']) ** 2, axis=1).argmin()
+            node = tree_list[idx]
+            if 'on_oblique_branch' in node.content and node.content['on_oblique_branch']:
+                on_oblique_branches.append(i)
+            elif 'on_terminal_branch' in node.content and node.content['on_terminal_branch']:
+                on_terminal_branches.append(i)
+        if 'terminal' in branch_types:
+            with open(folder + '/' + suffix + '_apical_terminal.txt', 'w') as fid:
+                for i in on_terminal_branches:
+                    fid.write('{:3d}\n'.format(i))
+            print('{} out of {} apical compartments are on terminal branches.'.format(len(on_terminal_branches), len(cell.apical_segments)))
+        if 'oblique' in branch_types:
+            with open(folder + '/' + suffix + '_apical_oblique.txt', 'w') as fid:
+                for i in on_oblique_branches:
+                    fid.write('{:3d}\n'.format(i))
+            print('{} out of {} apical compartments are on oblique branches.'.format(len(on_oblique_branches), len(cell.apical_segments)))
+
+    if args.plot:
+        fig,ax = plt.subplots(1, 1, figsize=(3,5))
+        plot_tree(tree, ax)
+        plt.savefig(folder + '/' + suffix + '.pdf')
+        plt.show()
+
+
+
 ############################################################
 ###                         HELP                         ###
 ############################################################
@@ -622,6 +750,7 @@ def help():
         print('   build          Use a converted morphology to build a cell in NEURON and obtain some statistics')
         print('   plot           Plot a converted morphology file')
         print('   simplify       Simplify a converted morphology')
+        print('   tag-branches   Tag oblique and terminal branches in a morphology')
         print('   clean          Remove branches below a certain length')
         print('')
         print('Type \'%s help <command>\' for help about a specific command.' % progname)
@@ -634,7 +763,9 @@ def help():
 
 
 # all the commands currently implemented
-commands = {'help': help, 'convert': convert, 'build': build, 'plot': plot, 'simplify': simplify, 'clean': clean, 'analyse': analyse}
+commands = {'help': help, 'convert': convert, 'build': build, 'plot': plot,
+            'simplify': simplify, 'clean': clean, 'analyse': analyse,
+            'tag-branches': tag_branches}
 
 def main():
     if len(sys.argv) == 1 or sys.argv[1] in ('-h','--help'):

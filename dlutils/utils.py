@@ -167,7 +167,7 @@ def individuals_from_pickle(pkl_file, config_file, cell_name=None, evaluator_fil
         default_parameters = None
         config = json.load(open(config_file,'r'))[cell_name]
 
-    return build_parameters_dict(population, evaluator, config, default_parameters), individual_ids
+    return build_parameters_dict(population, evaluator, config, default_parameters), np.array(list(map(int, individual_ids)))
 
 
 
