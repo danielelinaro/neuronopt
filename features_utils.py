@@ -538,7 +538,8 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out, AP_threshol
     pickle.dump(data,open(file_out,'wb'))
 
 
-def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff=np.inf):
+def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, sampling_rate, \
+                               cutoff=np.inf, full_output=False):
     import igor.binarywave as ibw
     import efel
     efel.setThreshold(AP_threshold)
@@ -567,20 +568,29 @@ def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, samp
     if voltage_range[0] > -100 and voltage_range[1] < 100:
         plt.plot(time[idx],voltage[:,idx].T,'k',lw=1)
 
+    if full_output:
+        return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur,time,voltage
+
     return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
 
 
-def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_start, AP_threshold, sampling_rate=20, cutoff=np.inf, files_out=[], quiet=False):
+def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_start, AP_threshold, \
+                                sampling_rate=20, cutoff=np.inf, files_out=[], quiet=False, full_output=False):
     if type(files_out) != list:
         files_out = [files_out]
     if len(files_out) == 1:
         features = []
+        time = []
+        voltage =  []
         has_spikes = []
         to_keep = []
         offset = 0
         for i,f in enumerate(files_in):
             print('I = %g nA.' % current_amplitudes[i])
-            feat,voltage_range,_ = extract_features_from_file(f, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff)
+            if full_output:
+                feat,voltage_range,_,T,V = extract_features_from_file(f, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff, full_output=True)
+            else:
+                feat,voltage_range,_ = extract_features_from_file(f, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff)
             if 'Spikecount' in feat[0]:
                 # Spikecount feature is present
                 with_spikes = [fe['Spikecount'][0] > 0 for fe in feat]
@@ -591,6 +601,9 @@ def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_sta
             if voltage_range[0] > -100 and voltage_range[1] < 100:
                 for j in good:
                     features.append({k: v for k,v in feat[j].items() if v is not None and len(v) > 0})
+                    if full_output:
+                        time.append(T)
+                        voltage.append(V)
                     has_spikes.append(with_spikes[j])
                     to_keep.append(offset + j)
             offset += len(feat)
@@ -598,11 +611,23 @@ def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_sta
         idx = np.argsort(amplitudes)
         amplitudes = [amplitudes[jdx] for jdx in idx]
         features = [features[jdx] for jdx in idx]
+        if full_output:
+            time = [time[jdx] for jdx in idx]
+            voltage = [voltage[jdx] for jdx in idx]
         has_spikes = [has_spikes[jdx] for jdx in idx]
         data = {'features': features, 'current_amplitudes': np.array(amplitudes), \
                 'stim_dur': stim_dur, 'stim_start': stim_start,
                 'has_spikes': np.array(has_spikes)}
         pickle.dump(data,open(files_out[0],'wb'))
+        if full_output:
+            if all([np.all(time[0] == t) for t in time[1:]]):
+                time = time[0]
+            voltage = np.squeeze(np.array(voltage))
+            np.savez_compressed(os.path.splitext(files_out[0])[0] + '.npz', \
+                                time=time, voltage=voltage, stim_start=stim_start, \
+                                stim_dur=stim_dur, has_spikes=np.array(has_spikes), \
+                                AP_threshold=AP_threshold, cutoff=cutoff, \
+                                current_amplitudes=np.array(amplitudes))
     else:
         if len(files_out) == 0:
             files_out = [x+'.pkl' for x in files_in]
@@ -721,6 +746,8 @@ def extract_features():
     parser.add_argument('--spike-threshold', default=-20., type=float,
                         help='spike threshold (default -20 mV)')
     parser.add_argument('--quiet', action='store_true', help='be quiet')
+    parser.add_argument('--full-output', action='store_true',
+                        help='save an additional pickle file with the voltage traces')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -844,7 +871,7 @@ def extract_features():
     else:
         extract_features_from_files(files_in, current_amplitudes, args.stim_dur, args.stim_start,
                                     args.spike_threshold, args.sampling_rate, args.cutoff,
-                                    files_out=[folder+'/'+file_out], quiet=args.quiet)
+                                    files_out=[folder+'/'+file_out], quiet=args.quiet, full_output=args.full_output)
 
     plt.xlabel('Time (ms)')
     plt.ylabel('Voltage (mV)')
