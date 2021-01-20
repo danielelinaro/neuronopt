@@ -15,9 +15,7 @@
         "neck_diam": 0.077
     },
     "spine_distance": 5,
-    "spine_loc": 0.5,
     "n_spines": 9,
-    "spike_dt": 0.3,
     "NMDA": {
         "model": "JS",
         "extMgConc": 1.0,
@@ -28,13 +26,13 @@
             "tau1": 1.0,
             "tau2": 100.0
         },
-        "weight": 0.001
+        "weight": 0.0
     },
     "AMPA": {
         "time_constants": {
             "tau1": 0.1,
             "tau2": 1.0
         },
-        "weight": 0.00028
+        "weight": 0.0006
     }
 }

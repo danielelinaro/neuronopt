@@ -1,23 +1,22 @@
 {
-    "cell_type": "a-thorny",
-    "cell_name": "DH070213C3",
-    "optimization_run": "20191206232623_DH070213C3_",
-    "swc_file": "DH070213C3-.Edit.scaled.converted.swc",
-    "individual": 0,
-    "passive": false,
-    "with_TTX": true,
-    "section_num": 16,
-    "Ra_neck_coeff": 1.0,
+    "cell_type": "thorny",
+    "cell_name": "DH070813",
+    "optimization_run": "20191208071008_DH070813_",
+    "swc_file": "DH070813-.Edit.scaled.converted.swc",
+    "individual": 2,
+    "section_num": 14,
+    "Ra_neck_coeff": 1.5,
     "spine": {
         "head_L": 0.5,
         "head_diam": 0.5,
         "neck_L": 1.58,
-        "neck_diam": 0.077
+        "neck_diam": 0.05
     },
     "spine_distance": 5,
     "spine_loc": 0.5,
     "n_spines": 9,
     "spike_dt": 0.3,
+    "poisson_frequency": 0.5,
     "NMDA": {
         "model": "JS",
         "extMgConc": 1.0,
@@ -26,7 +25,7 @@
         "sh": -7.778,
         "time_constants": {
             "tau1": 1.0,
-            "tau2": 100.0
+            "tau2": 50.0
         },
         "weight": 0.001
     },
@@ -35,6 +34,6 @@
             "tau1": 0.1,
             "tau2": 1.0
         },
-        "weight": 0.00028
+        "weight": 0.001
     }
 }

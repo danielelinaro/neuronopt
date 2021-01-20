@@ -4,8 +4,6 @@
     "optimization_run": "20191206232623_DH070213C3_",
     "swc_file": "DH070213C3-.Edit.scaled.converted.swc",
     "individual": 0,
-    "passive": false,
-    "with_TTX": true,
     "section_num": 16,
     "Ra_neck_coeff": 1.0,
     "spine": {
@@ -18,6 +16,7 @@
     "spine_loc": 0.5,
     "n_spines": 9,
     "spike_dt": 0.3,
+    "poisson_frequency": 0.1,
     "NMDA": {
         "model": "JS",
         "extMgConc": 1.0,
