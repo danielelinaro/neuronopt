@@ -97,7 +97,6 @@ class Spine (object):
         self.neck.connect(self._sec(self._sec_x))
 
     def biophysics(self):
-        print('Spine axial resistivity: {:.2f} Ohm cm.'.format(self._Ra))
         for sec in (self.neck, self.head):
             sec.cm = self._sec.cm
             sec.Ra = self._Ra
