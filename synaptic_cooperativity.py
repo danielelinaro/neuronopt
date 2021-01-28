@@ -2,6 +2,7 @@ import os
 import sys
 import json
 from time import strftime, localtime
+from time import time as TIME
 import pickle
 from itertools import chain
 import argparse as arg
@@ -230,36 +231,40 @@ if __name__ == '__main__':
     # spines will be activated in a Poisson fashion with this average interval between activations
     F_burst = config['synaptic_activation_frequency']
     n_bursts = stim_dur * F_burst * 2
-    IBI = - np.log(rs.uniform(size=n_bursts)) / F_burst * 1e3  # [ms]
-    presyn_burst_times = 2 * delay + np.cumsum(IBI)
-    presyn_burst_times = presyn_burst_times[presyn_burst_times < delay + stim_dur]
+    if n_bursts > 0:
+        IBI = - np.log(rs.uniform(size=n_bursts)) / F_burst * 1e3  # [ms]
+        presyn_burst_times = 2 * delay + np.cumsum(IBI)
+        presyn_burst_times = presyn_burst_times[presyn_burst_times < delay + stim_dur]
     
-    try:
-        F = config['poisson_frequency']
-        poisson = True
-    except:
-        poisson = False
-        spike_dt = config['spike_dt']
+        try:
+            F = config['poisson_frequency']
+            poisson = True
+        except:
+            poisson = False
+            spike_dt = config['spike_dt']
         
-    presyn_spike_times = [np.array([]) for _ in range(n_spines)]
+        presyn_spike_times = [np.array([]) for _ in range(n_spines)]
 
-    for t0 in presyn_burst_times:
-        if poisson:
-            ISI = - np.log(rs.uniform(size=n_spines*2)) / F * 1e3  # [ms]
-            spks = np.cumsum(ISI)
-            for i,j in enumerate(rs.permutation(n_spines)):
-                presyn_spike_times[j] = np.append(presyn_spike_times[j], t0 + spks[i])
-        else:
-            for i in range(n_spines):
-                presyn_spike_times[i] = np.append(presyn_spike_times[i], t0 + i * spike_dt)
+        for t0 in presyn_burst_times:
+            if poisson:
+                ISI = - np.log(rs.uniform(size=n_spines*2)) / F * 1e3  # [ms]
+                spks = np.cumsum(ISI)
+                for i,j in enumerate(rs.permutation(n_spines)):
+                    presyn_spike_times[j] = np.append(presyn_spike_times[j], t0 + spks[i])
+            else:
+                for i in range(n_spines):
+                    presyn_spike_times[i] = np.append(presyn_spike_times[i], t0 + i * spike_dt)
 
-    logger.info('Presynaptic spike times:')
-    for i, spks in enumerate(presyn_spike_times):
-        logger.info(f'Spine {i+1}: t = {spks}')
+        logger.info('Presynaptic spike times:')
+        for i, spks in enumerate(presyn_spike_times):
+            logger.info(f'Spine {i+1}: t = {spks}')
 
-    for syn, spks in zip(synapses, presyn_spike_times):
-        syn.set_presynaptic_spike_times(spks)
-
+        for syn, spks in zip(synapses, presyn_spike_times):
+            syn.set_presynaptic_spike_times(spks)
+    else:
+        logger.info('No presynaptic stimulation.')
+        presyn_burst_times = np.array([])
+        presyn_spike_times = np.array([])
 
     ############################
     ### make the OU stimulus ###
@@ -283,9 +288,14 @@ if __name__ == '__main__':
     vec = {key: h.Vector(OU[key]) for key in ('t','x')}
 
     stim = h.IClamp(cell.morpho.soma[0](0.5))
-    stim.dur = 10 * tstop
-    vec['x'].play(stim._ref_amp, vec['t'], 1)
-
+    if OU['stddev'] != 0:
+        stim.dur = 10 * tstop
+        vec['x'].play(stim._ref_amp, vec['t'], 1)
+    else:
+        stim.dur = stim_dur
+        stim.delay = delay
+        stim.amp = OU['mean']
+        logger.info('The standard deviation of the OU process is zero: using conventional current clamp stimulus.')
 
     ##########################
     ### make the recorders ###
@@ -305,9 +315,23 @@ if __name__ == '__main__':
     ### run the simulation ###
     ##########################
 
-    h.cvode_active(1)
+    if OU['stddev'] != 0:
+        h.cvode_active(0)
+        logger.info('Not using CVode.')
+    else:
+        h.cvode_active(1)
+        logger.info('Using CVode.')
+
     h.tstop = tstop
+    logger.info('Running simulation... ')
+    start = TIME()
     h.run()
+    end = TIME()
+    dur = int(end - start)
+    hours = dur // 3600
+    minutes = (dur % 3600) // 60
+    secs = (dur % 60) % 60
+    logger.info(f'Elapsed time: {hours:d}:{minutes:02d}:{secs:02d}.')
     
 
     #####################
@@ -316,20 +340,28 @@ if __name__ == '__main__':
 
     data = {
         'config': config,
-        'OU': OU['x'],
+        'OU_t': OU['t'],
+        'OU_x': OU['x'],
         'RA': Ra,
         'presyn_burst_times': presyn_burst_times,
         'presyn_spike_times': presyn_spike_times
     }
     for key in recorders:
         data[key] = np.array(recorders[key])
-    np.savez_compressed(f'synaptic_activation_{ts}.npz', data)
-
+    logger.info(f'Saving data to synaptic_activation_{ts}.npz')
+    np.savez_compressed(f'synaptic_activation_{ts}.npz', **data)
+    spike_times = np.array(recorders['spike_times'])
+    ISI = np.diff(spike_times) * 1e-3
+    firing_rate = len(spike_times) / stim_dur * 1e3
+    CV = ISI.std() / ISI.mean()
+    logger.info(f'Firing rate = {firing_rate:.2f} spike/s.')
+    logger.info(f'CV = {CV:.4f}.')
 
     #####################
     ### plot a figure ### 
     #####################
 
+    logger.info(f'Plotting simulation results to synaptic_activation_{ts}.pdf')
     fig,ax = plt.subplots(1, 1, figsize=(6,4))
     ax.plot(data['time'], data['Vsoma'], 'k', lw=1)
     ax.set_xlabel('Time (ms)')
