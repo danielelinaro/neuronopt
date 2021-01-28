@@ -20,7 +20,6 @@ from dlutils.spine import Spine
 from dlutils.utils import extract_mechanisms
 
 
-optimization_folder = '/Users/daniele/Postdoc/Research/CA3/OPTIMIZATIONS/'
 prog_name = os.path.basename(sys.argv[0])
 
 
@@ -35,13 +34,18 @@ if __name__ == '__main__':
 
     config_file = args.config_file
     if not os.path.isfile(args.config_file):
-        print(f'{prog_name}: {config_file}: no such file.')
+        print(f'{prog_name}: {config_file}: no such file')
         sys.exit(1)
         
     ts = strftime('%Y%m%d-%H%M%S', localtime())
     config = json.load(open(config_file, 'r'))
 
-    log_fmt = logging.Formatter("%(message)s")
+    optimization_folder = config['optimization_folder']
+    if not os.path.isdir(optimization_folder):
+        print(f'{prog_name}: {optimization_folder}: no such directory')
+        sys.exit(2)
+
+    log_fmt = logging.Formatter('%(asctime)s  |  %(message)s', '%Y-%m-%d  %H:%M:%S')
     logger = logging.getLogger()
     file_hndl = logging.FileHandler(f'synaptic_activation_{ts}.log')
     file_hndl.setFormatter(log_fmt)
@@ -58,7 +62,7 @@ if __name__ == '__main__':
             seed = int.from_bytes(fid.read(4), 'little')
             config['seed'] = seed
 
-    logger.info(f'Random number generator seed: {seed}.')
+    logger.info(f'Random number generator seed: {seed}')
     rs = RandomState(MT19937(SeedSequence(seed)))
     
     cell_type = config['cell_type']
@@ -98,9 +102,9 @@ if __name__ == '__main__':
     section_num = config['section_num']
     section = cell.morpho.apic[section_num]
     Ra = section.Ra * config['Ra_neck_coeff']
-    logger.info(f'Branch order of section {section.name()}: {branch_order(section)}.')
+    logger.info(f'Branch order of section {section.name()}: {branch_order(section)}')
 
-    
+
     ##############################
     ### instantiate the spines ###
     ##############################
@@ -129,7 +133,7 @@ if __name__ == '__main__':
 
     for spine in spines:
         spine.instantiate()
-    logger.info(f'Spines axial resistivity: {Ra:.1f} Ohm cm.')
+    logger.info(f'Spines axial resistivity: {Ra:.1f} Ohm cm')
     
     if args.plot_morpho:
         # show where the spines are located on the dendritic tree
@@ -164,15 +168,15 @@ if __name__ == '__main__':
             segments.append(section(spine._sec_x))
             segments_idx.append([i+1])
     if len(segments_idx) == 1:
-        logger.info('All spines are connected to the same segment.')
+        logger.info('All spines are connected to the same segment')
     elif len(segments_idx) == n_spines:
-        logger.info('Each spine is connected to a different segment on the dendritic branch.')
+        logger.info('Each spine is connected to a different segment on the dendritic branch')
     else:
         for group in segments_idx:
             if len(group) > 1:
-                logger.info(f'Spines {np.array(group)+1} are connected to the same segment.')
+                logger.info(f'Spines {np.array(group)+1} are connected to the same segment')
             else:
-                logger.info(f'Spine {group[0]+1} is connected to a distinct segment.')
+                logger.info(f'Spine {group[0]+1} is connected to a distinct segment')
 
 
     ########################################
@@ -221,7 +225,7 @@ if __name__ == '__main__':
         logger.info('       gamma = {:.3f} 1/mV'.format(synapses[0].nmda_syn.gamma))
         logger.info('          sh = {:.3f} mV'.format(synapses[0].nmda_syn.sh))
     elif Mg_unblock_model == 'HRN':
-        logger.info('Using Harnett Mg unblock model with default parameters.')
+        logger.info('Using Harnett Mg unblock model with default parameters')
 
 
     ###########################################
@@ -262,7 +266,7 @@ if __name__ == '__main__':
         for syn, spks in zip(synapses, presyn_spike_times):
             syn.set_presynaptic_spike_times(spks)
     else:
-        logger.info('No presynaptic stimulation.')
+        logger.info('No presynaptic stimulation')
         presyn_burst_times = np.array([])
         presyn_spike_times = np.array([])
 
@@ -295,7 +299,7 @@ if __name__ == '__main__':
         stim.dur = stim_dur
         stim.delay = delay
         stim.amp = OU['mean']
-        logger.info('The standard deviation of the OU process is zero: using conventional current clamp stimulus.')
+        logger.info('The standard deviation of the OU process is zero: using conventional current clamp stimulus')
 
     ##########################
     ### make the recorders ###
@@ -317,13 +321,13 @@ if __name__ == '__main__':
 
     if OU['stddev'] != 0:
         h.cvode_active(0)
-        logger.info('Not using CVode.')
+        logger.info('Not using CVode')
     else:
         h.cvode_active(1)
-        logger.info('Using CVode.')
+        logger.info('Using CVode')
 
     h.tstop = tstop
-    logger.info('Running simulation... ')
+    logger.info('Running simulation')
     start = TIME()
     h.run()
     end = TIME()
@@ -331,7 +335,7 @@ if __name__ == '__main__':
     hours = dur // 3600
     minutes = (dur % 3600) // 60
     secs = (dur % 60) % 60
-    logger.info(f'Elapsed time: {hours:d}:{minutes:02d}:{secs:02d}.')
+    logger.info(f'Elapsed time: {hours:d}:{minutes:02d}:{secs:02d}')
     
 
     #####################
@@ -354,8 +358,8 @@ if __name__ == '__main__':
     ISI = np.diff(spike_times) * 1e-3
     firing_rate = len(spike_times) / stim_dur * 1e3
     CV = ISI.std() / ISI.mean()
-    logger.info(f'Firing rate = {firing_rate:.2f} spike/s.')
-    logger.info(f'CV = {CV:.4f}.')
+    logger.info(f'Firing rate = {firing_rate:.2f} spike/s')
+    logger.info(f'CV = {CV:.4f}')
 
     #####################
     ### plot a figure ### 
