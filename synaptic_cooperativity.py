@@ -274,7 +274,7 @@ if __name__ == '__main__':
     ### make the OU stimulus ###
     ############################
 
-    dt = 0.1        # [ms]
+    dt = config['sim']['dt']        # [ms]
     OU = {}
     OU['t'] = np.arange(0, tstop, dt)
     OU['x'] = np.zeros(OU['t'].size)
@@ -321,7 +321,8 @@ if __name__ == '__main__':
 
     if OU['stddev'] != 0:
         h.cvode_active(0)
-        logger.info('Not using CVode')
+        h.dt = dt
+        logger.info(f'Not using CVode: dt set to {dt:.3f} ms')
     else:
         h.cvode_active(1)
         logger.info('Using CVode')
@@ -335,7 +336,7 @@ if __name__ == '__main__':
     hours = dur // 3600
     minutes = (dur % 3600) // 60
     secs = (dur % 60) % 60
-    logger.info(f'Elapsed time: {hours:d}:{minutes:02d}:{secs:02d}')
+    logger.info(f'Elapsed time: {hours:02d}:{minutes:02d}:{secs:02d}')
     
 
     #####################
