@@ -23,6 +23,25 @@ from dlutils.utils import extract_mechanisms
 prog_name = os.path.basename(sys.argv[0])
 
 
+def make_gamma_spike_train(k, rate, tend=None, Nev=None, refractory_period=0, random_state=None):
+    from scipy.stats import gamma
+    if Nev is None and tend is not None:
+        Nev = int(np.ceil(2 * tend * rate))
+    else:
+        Nev *= 2
+    ISIs = gamma.rvs(k, loc=0, scale=1 / (k * rate), size=Nev, random_state=random_state)
+    ISIs = ISIs[ISIs > refractory_period]
+    spks = np.cumsum(ISIs)
+    if tend is not None:
+        spks = spks[spks < tend]
+    else:
+        spks = spks[:Nev//2]
+    return spks
+
+
+make_poisson_spike_train = lambda rate, tend=None, Nev=None, refractory_period=0, random_state=None: \
+    make_gamma_spike_train(1, rate, tend, Nev, refractory_period, random_state)
+
 
 if __name__ == '__main__':
 
@@ -234,10 +253,11 @@ if __name__ == '__main__':
 
     # spines will be activated in a Poisson fashion with this average interval between activations
     F_burst = config['synaptic_activation_frequency']
-    n_bursts = stim_dur * F_burst * 2
+    n_bursts = stim_dur * F_burst
     if n_bursts > 0:
-        IBI = - np.log(rs.uniform(size=n_bursts)) / F_burst * 1e3  # [ms]
-        presyn_burst_times = 2 * delay + np.cumsum(IBI)
+        presyn_burst_times = 2 * delay + make_poisson_spike_train(F_burst, Nev=n_bursts,
+                                                                  refractory_period=0.1 / F_burst,
+                                                                  random_state=rs) * 1e3
         presyn_burst_times = presyn_burst_times[presyn_burst_times < delay + stim_dur]
     
         try:
@@ -251,8 +271,7 @@ if __name__ == '__main__':
 
         for t0 in presyn_burst_times:
             if poisson:
-                ISI = - np.log(rs.uniform(size=n_spines*2)) / F * 1e3  # [ms]
-                spks = np.cumsum(ISI)
+                spks = make_poisson_spike_train(F, Nev=n_spines, refractory_period=config['sim']['dt'] * 5 * 1e-3, random_state=rs) * 1e3
                 for i,j in enumerate(rs.permutation(n_spines)):
                     presyn_spike_times[j] = np.append(presyn_spike_times[j], t0 + spks[i])
             else:
@@ -260,8 +279,11 @@ if __name__ == '__main__':
                     presyn_spike_times[i] = np.append(presyn_spike_times[i], t0 + i * spike_dt)
 
         logger.info('Presynaptic spike times:')
-        for i, spks in enumerate(presyn_spike_times):
-            logger.info(f'Spine {i+1}: t = {spks}')
+        for i in range(n_spines):
+            # sort the presynaptic spike times so that we never run in the situation that
+            # the i-th spike should have arrived before the (i-1)-th, which messes up NEURON
+            presyn_spike_times[i] = np.sort(presyn_spike_times[i])
+            logger.info(f'Spine {i+1}: t = {presyn_spike_times[i]}')
 
         for syn, spks in zip(synapses, presyn_spike_times):
             syn.set_presynaptic_spike_times(spks)

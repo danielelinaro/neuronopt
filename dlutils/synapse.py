@@ -25,11 +25,15 @@ class Synapse (object):
         raise NotImplementedError()
 
     def set_presynaptic_spike_times(self, spike_times):
-        self.spike_times = h.Vector(spike_times)
-        self.stim.play(self.spike_times)
+        if np.any(np.diff(spike_times) < 0):
+            raise Exception('Presynaptic spike times should be monotonically increasing')
+        self.spike_times = spike_times
+        self.spike_times_vec = h.Vector(spike_times)
+        self.stim.play(self.spike_times_vec)
 
     def get_presynaptic_spike_times(self):
-        return np.array(self.spike_times)
+        return self.spike_times
+
 
 
 class AMPAExp2Synapse (Synapse):
