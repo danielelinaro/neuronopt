@@ -49,8 +49,8 @@ if __name__ == '__main__':
     parser.add_argument('config_file', type=str, action='store', help='configuration file')
     parser.add_argument('--plot-morpho', action='store_true',
                         help='plot the morphology with the spines highlighted (default: no)')
-    parser.add_argument('--save-voltage', action='store_true',
-                        help='save also the voltage trace (default: no)')
+    parser.add_argument('--save-traces', action='store_true',
+                        help='save also voltage and current time series (default: no)')
     args = parser.parse_args(args=sys.argv[1:])
 
     config_file = args.config_file
@@ -372,14 +372,14 @@ if __name__ == '__main__':
     spike_times = np.array(recorders['spike_times'])
     data = {
         'config': config,
-        'OU_t': OU['t'],
-        'OU_x': OU['x'],
         'Ra': Ra,
         'presyn_burst_times': presyn_burst_times,
         'presyn_spike_times': presyn_spike_times,
         'spike_times': spike_times
     }
-    if args.save_voltage:
+    if args.save_traces:
+        data['OU_t'] = OU['t']
+        data['OU_x'] = OU['x']
         for key in recorders:
             if key != 'spike_times':
                 data[key] = np.array(recorders[key])
