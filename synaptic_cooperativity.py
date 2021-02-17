@@ -49,6 +49,8 @@ if __name__ == '__main__':
     parser.add_argument('config_file', type=str, action='store', help='configuration file')
     parser.add_argument('--plot-morpho', action='store_true',
                         help='plot the morphology with the spines highlighted (default: no)')
+    parser.add_argument('--save-voltage', action='store_true',
+                        help='save also the voltage trace (default: no)')
     args = parser.parse_args(args=sys.argv[1:])
 
     config_file = args.config_file
@@ -271,7 +273,9 @@ if __name__ == '__main__':
 
         for t0 in presyn_burst_times:
             if poisson:
-                spks = make_poisson_spike_train(F, Nev=n_spines, refractory_period=config['sim']['dt'] * 5 * 1e-3, random_state=rs) * 1e3
+                spks = make_poisson_spike_train(F, Nev=n_spines,
+                                                refractory_period=config['sim']['dt'] * 5 * 1e-3,
+                                                random_state=rs) * 1e3
                 for i,j in enumerate(rs.permutation(n_spines)):
                     presyn_spike_times[j] = np.append(presyn_spike_times[j], t0 + spks[i])
             else:
@@ -365,19 +369,22 @@ if __name__ == '__main__':
     ### save the data ###
     #####################
 
+    spike_times = np.array(recorders['spike_times'])
     data = {
         'config': config,
         'OU_t': OU['t'],
         'OU_x': OU['x'],
-        'RA': Ra,
+        'Ra': Ra,
         'presyn_burst_times': presyn_burst_times,
-        'presyn_spike_times': presyn_spike_times
+        'presyn_spike_times': presyn_spike_times,
+        'spike_times': spike_times
     }
-    for key in recorders:
-        data[key] = np.array(recorders[key])
+    if args.save_voltage:
+        for key in recorders:
+            if key != 'spike_times':
+                data[key] = np.array(recorders[key])
     logger.info(f'Saving data to synaptic_activation_{ts}.npz')
     np.savez_compressed(f'synaptic_activation_{ts}.npz', **data)
-    spike_times = np.array(recorders['spike_times'])
     ISI = np.diff(spike_times) * 1e-3
     firing_rate = len(spike_times) / stim_dur * 1e3
     CV = ISI.std() / ISI.mean()
@@ -389,8 +396,14 @@ if __name__ == '__main__':
     #####################
 
     logger.info(f'Plotting simulation results to synaptic_activation_{ts}.pdf')
+    try:
+        time = data['time']
+        Vsoma = data['Vsoma']
+    except:
+        time = np.array(recorders['time'])
+        Vsoma = np.array(recorders['Vsoma'])
     fig,ax = plt.subplots(1, 1, figsize=(6,4))
-    ax.plot(data['time'], data['Vsoma'], 'k', lw=1)
+    ax.plot(time, Vsoma, 'k', lw=1)
     ax.set_xlabel('Time (ms)')
     ax.set_ylabel('Vm (mV)')
     for side in 'top', 'right':
