@@ -26,16 +26,15 @@ prog_name = os.path.basename(sys.argv[0])
 def make_gamma_spike_train(k, rate, tend=None, Nev=None, refractory_period=0, random_state=None):
     from scipy.stats import gamma
     if Nev is None and tend is not None:
-        Nev = int(np.ceil(2 * tend * rate))
-    else:
-        Nev *= 2
-    ISIs = gamma.rvs(k, loc=0, scale=1 / (k * rate), size=Nev, random_state=random_state)
-    ISIs = ISIs[ISIs > refractory_period]
+        Nev = int(np.ceil(tend * rate))
+    ISIs = []
+    while len(ISIs) < Nev:
+        ISI = gamma.rvs(k, loc=0, scale=1 / (k * rate), size=1, random_state=random_state)
+        if ISI > refractory_period:
+            ISIs.append(ISI)
     spks = np.cumsum(ISIs)
     if tend is not None:
         spks = spks[spks < tend]
-    else:
-        spks = spks[:Nev//2]
     return spks
 
 
