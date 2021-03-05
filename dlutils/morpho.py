@@ -4,7 +4,8 @@ import numpy as np
 
 
 __all__ = ['find_node_in_tree', 'compute_branch_id', 'find_terminal_branches',
-           'find_oblique_branches', 'find_terminal_and_oblique_branches', 'plot_tree']
+           'find_oblique_branches', 'find_terminal_and_oblique_branches',
+           'Node', 'Tree']
 
 
 SWC_types = {'soma': 1, 'axon': 2, 'basal': 3, 'apical': 4, 'soma_contour': 16}
@@ -101,33 +102,143 @@ def find_terminal_and_oblique_branches(swc_file, terminal_point_types = (SWC_typ
     return tree
 
 
-def plot_tree(tree, ax=None):
-    import matplotlib.pyplot as plt
-    if ax is None:
-        _,ax = plt.subplots(1, 1)
-    min_x, max_x = 0, 0
-    for node in tree:
-        if not node.parent is None and node.content['p3d'].type in (1,3,4):
-            if node.content['p3d'].type == 1 and node.parent.content['p3d'].type == 1:
-                continue
-            parent_xy = node.parent.content['p3d'].xyz[:2]
-            xy = node.content['p3d'].xyz[:2]
-            if xy[0] >  max_x:
-                max_x = xy[0]
-            if xy[0] < min_x:
-                min_x = xy[0]
-            r = node.content['p3d'].radius
-            if 'on_oblique_branch' in node.content and node.content['on_oblique_branch']:
-                col = 'g'
-            elif 'on_terminal_branch' in node.content and node.content['on_terminal_branch']:
-                col = 'm'
-            else:
-                col = 'k'
-            ax.plot([parent_xy[0], xy[0]], [parent_xy[1], xy[1]], color=col, linewidth=r)
-    width = max_x - min_x
-    dx = 100
-    ax.plot(max_x - width / 10 + np.zeros(2), 50 + np.array([0,dx]), 'k', lw=1)
-    ax.text(max_x - width / 6.5, 50 + dx/2, r'{} $\mu$m'.format(dx), horizontalalignment='center', \
-            verticalalignment='center', rotation=90)
-    ax.axis('equal')
+class Node (object):
+    def __init__(self, x, y, z, diam, node_type, node_id):
+        self._x = x
+        self._y = y
+        self._z = z
+        self._xyz = np.array([x,y,z])
+        self._diam = diam
+        self._node_type = node_type
+        self._node_id = node_id
+        self._parent = None
+        self._children = []
+
+    @property
+    def id(self):
+        return self._id
+    
+    @property
+    def type(self):
+        return self._node_type
+    
+    @property
+    def x(self):
+        return self._x
+    @x.setter
+    def x(self, value):
+        self._x = value
+        self._xyz[0] = value
+
+    @property
+    def y(self):
+        return self._y
+    @y.setter
+    def y(self, value):
+        self._y = value
+        self._xyz[1] = value
+
+    @property
+    def z(self):
+        return self._z
+    @z.setter
+    def z(self, value):
+        self._z = value
+        self._xyz[2] = value
+        
+    @property
+    def diam(self):
+        return self._diam
+    @diam.setter
+    def diam(self, value):
+        if diam <= 0:
+            raise Exception('Diameter must be > 0')
+        self._diam = value
+
+    @property
+    def xyz(self):
+        return self._xyz
+    @xyz.setter
+    def xyz(self, value):
+        self._xyz = value
+        self._x, self._y, self._z = value
+        
+    @property
+    def children(self):
+        return self._children
+
+    def add_to_children(self, node):
+        if not node in self._children:
+            self._children.append(node)
+            node.parent = self
+            
+    def remove_from_children(self, node):
+        idx = self._children.index(node)
+        self._children.pop(idx)
+
+    @property
+    def parent(self):
+        return self._parent
+    @parent.setter
+    def parent(self, value):
+        if self._parent == value:
+            return
+        old_parent = self._parent
+        if old_parent is not None:
+            old_parent.remove_from_children(self)
+        self._parent = value
+        value.add_to_children(self)
+
+
+class Tree (object):
+    def __init__(self, swc_file):
+        from collections import OrderedDict
+        data = np.loadtxt(swc_file)
+        idx = (data[:,1] == 2) | (data[:,1] == 3) | (data[:,1] == 4)
+        x = data[idx, 2]
+        y = data[idx, 3]
+        z = data[idx, 4]
+        self.xy_ratio = (x.max() - x.min()) / (y.max() - y.min())
+        self.bounds = np.array([[x.min(), x.max()], [y.min(), y.max()], [z.min(), z.max()]])
+        nodes = OrderedDict()
+        for row in data:
+            node_id   = int(row[0])
+            node_type = int(row[1])
+            x, y, z,  = row[2:5]
+            diam      = row[5]
+            parent_id = int(row[6])
+            nodes[node_id] = Node(x, y, z, diam, node_type, node_id)
+            if parent_id > 0:
+                nodes[node_id].parent = nodes[parent_id]
+        _,self._root = nodes.popitem(last=False)
+        self.branches = []
+        self._make_branches(self.root, self.branches)
+        
+    @property
+    def root(self):
+        return self._root
+
+    def _gather_nodes(self, node, node_list):
+        if not node is None:
+            node_list.append(node)
+            for child in node.children :
+                self._gather_nodes(child, node_list)
+
+    def __iter__(self):
+        nodes = []
+        self._gather_nodes(self.root, nodes)
+        for n in nodes:
+            yield n
+
+    def _make_branches(self, node, branches):
+        branch = []
+        while len(node.children) == 1:
+            branch.append(node)
+            node = node.children[0]
+        branch.append(node)
+        branches.append(branch)
+        for child in node.children:
+            self._make_branches(child, branches)
+
+
 
