@@ -41,62 +41,122 @@ colors = ColorFactory()
 argsort = lambda seq: sorted(list(range(len(seq))), key=seq.__getitem__)
 
 
-def worker(cell_id, args):
-    swc_file = args['swc_file']
-    final_pop = args['final_pop']
-    evaluator = args['evaluator']
-    I = args['I']
-    stim_dur = args['stim_dur']
-    stim_start = args['stim_start']
-    target_features = args['target_features']
-    protocols_names = args['protocols_names']
-    err_max = args['err_max']
-    verbose = args['verbose']
+def worker(cell_id, **kwargs):
+    swc_file = kwargs['swc_file']
+    final_pop = kwargs['final_pop']
+    evaluator = kwargs['evaluator']
+    target_features = kwargs['target_features']
+    protocols = kwargs['protocols']
+    err_max = kwargs['err_max']
+    verbose = kwargs['verbose']
+    mechanisms = kwargs['mechs']
+    add_axon_if_missing = kwargs['add_axon_if_missing']
+    replace_axon = kwargs['replace_axon']
     individual = final_pop[cell_id]
-    mechanisms = args['mechs']
 
     config = None
     default_parameters = None
-    if 'config' in args:
-        config = args['config']
-    else:
-        default_parameters = args['default_parameters']
+    try:
+        config = kwargs['config']
+    except:
+        default_parameters = kwargs['default_parameters']
 
     parameters = build_parameters_dict([individual], evaluator, config, default_parameters)[0]
 
-    stim_end = stim_start + stim_dur
+    inj_loc, inj_dist = 'soma', 0
+    good = True
+    n_protocols = len(protocols)
 
-    n_steps = len(I)
-    for i in range(n_steps):
-        good = True
-        cell_name = 'individual_%03d_%d' % (cell_id,i)
-        recorders = inject_current_step(I[i], stim_start, stim_dur, swc_file, parameters, \
-                                        mechanisms, cell_name, do_plot=False)
+    if verbose:
+        print('----------------------------------')
+        print(f'Final population individual #{cell_id+1}')
+        printed_header = True
+    else:
+        printed_header = False
+
+    for i, (proto_name, proto) in enumerate(protocols.items()):
+        if verbose:
+            print(f'  {proto_name}')
+            printed_proto_name = True
+        else:
+            printed_proto_name = False
+
+        cell_name = f'individual_{cell_id:03d}_{i}'
+
+        amp, dur, delay = proto['stimuli'][0]['amp'] * 1e3, proto['stimuli'][0]['duration'], proto['stimuli'][0]['delay']
+
+        try:
+            apical_rec_sites = {extra_rec['name']: extra_rec['somadistance'] for extra_rec in proto['extra_recordings'] \
+                                if extra_rec['seclist_name'] == 'apical'}
+            basal_rec_sites = {extra_rec['name']: extra_rec['somadistance'] for extra_rec in proto['extra_recordings'] \
+                               if extra_rec['seclist_name'] == 'basal'}
+        except:
+            apical_rec_sites, basal_rec_sites = {}, {}
+
+        recorders = inject_current_step(amp, delay, dur, swc_file, \
+                                        inj_loc, inj_dist, parameters, mechanisms,
+                                        after = proto['stimuli'][0]['totduration'] - delay - dur,
+                                        cell_name = cell_name,
+                                        add_axon_if_missing = add_axon_if_missing,
+                                        replace_axon = replace_axon,
+                                        apical_dst = apical_rec_sites,
+                                        basal_dst = basal_rec_sites,
+                                        do_plot = False)
         h('forall delete_section()')
-        trace = {'T': recorders['t'], 'V': recorders['soma.v'], 'stim_start': [stim_start], 'stim_end': [stim_end]}
-        feature_names = target_features[protocols_names[i]]['soma'].keys()
-        feature_values = efel.getFeatureValues([trace],feature_names)
-        for name in feature_names:
-            if feature_values[0][name] is None:
-                if verbose:
-                    print(colors.red('[%d] %s is None.' % (cell_id,name)))
-                good = False
-                continue
-            m = target_features[protocols_names[i]]['soma'][name][0]
-            s = target_features[protocols_names[i]]['soma'][name][1]
-            err = np.abs(np.mean(feature_values[0][name]) - m) / s
-            if err > err_max:
-                if verbose:
-                    print(colors.red('[%d] %s = %g' % (cell_id,name,err)))
-                good = False
-            elif verbose:
-                print(colors.green('[%d] %s = %g' % (cell_id,name,err)))
+        time = np.array(recorders['t'])
+
+        for site in target_features[proto_name]:
+            feature_names = list(target_features[proto_name][site].keys())
+            thresh = None
+            for obj in evaluator.fitness_calculator.objectives:
+                if proto_name + '.' + site in obj.features[0].name:
+                    thresh = obj.features[0].threshold
+                    break
+            if thresh is None:
+                raise Exception(f'Cannot find the threshold value for protocol {proto_name} and site {site}')
+            if verbose:
+                print(f'Setting threshold for protocol {proto_name} and site {site} to {thresh} mV.')
+            efel.setThreshold(thresh)
+            feature_values = efel.getFeatureValues([
+                {'T': time, 'V': np.array(recorders[site + '.v']),
+                 'stim_start': [delay], 'stim_end': [delay + dur]}
+            ], feature_names)
+            for feature_name in feature_names:
+                if feature_values[0][feature_name] is not None:
+                    m = target_features[proto_name][site][feature_name][0]
+                    s = target_features[proto_name][site][feature_name][1]
+                    err = np.abs(np.mean(feature_values[0][feature_name]) - m) / s
+                    if err > err_max and feature_name not in features_to_ignore:
+                        good = False
+                        if not verbose and not printed_header:
+                            print('----------------------------------')
+                            print(f'Final population individual #{i+1}')
+                            printed_header = True
+                        if not verbose and not printed_proto_name:
+                            print(f'  {proto_name}')
+                            printed_proto_name = True
+                        print(colors.red(f'    {feature_name} = {err}'))
+                    elif verbose and err > err_max and feature_name in features_to_ignore:
+                        print(colors.yellow(f'    {feature_name} = {err}'))
+                    elif verbose:
+                        print(colors.green(f'    {feature_name} = {err}'))
+                else:
+                    if not printed_header:
+                        print('----------------------------------')
+                        print(f'Final population individual #{i+1}')
+                        printed_header = True
+                    if not printed_proto_name:
+                        print(f'  {proto_name}')
+                        printed_proto_name = True
+                    print(colors.blue(f'    {feature_name} was not computed'))
 
         if not good:
-            print('Individual ' + colors.red('%03d does not match' % (cell_id+1)) + ' the requisites.')
+            print('Individual ' + colors.red(f'{cell_id+1:03d}') + ' of the final population ' + \
+                  colors.red('does not match') +  ' the requisites.')
             return False
 
-    print('Individual ' + colors.green('%03d matches'%(cell_id+1)) + ' the requisites.')
+    print('Individual ' + colors.green(f'{cell_id+1:03d}') + ' of the final population ' + \
+          colors.green('matches') + ' the requisites.')
     return True
 
 
@@ -104,7 +164,7 @@ if __name__ == '__main__':
 
     parser = arg.ArgumentParser(description='Select cells that match a certain quality threshold.')
     parser.add_argument('folder', type=str, action='store', help='folder containing the results of the optimization')
-    parser.add_argument('-t', '--threshold', default=3, type=int, help='threshold on the number of STDs to accept a solution')
+    parser.add_argument('-t', '--threshold', default=5., type=float, help='threshold on the number of STDs to accept a solution')
     parser.add_argument('--features', default='all', type=str, help='comma-separated list of features to consider (default: all)')
     parser.add_argument('--ignore', default=None, type=str, help='comma-separated list of features to ignore')
     parser.add_argument('-a', '--all', action='store_true', help='process all solutions (potentially very time consuming)')
@@ -114,10 +174,11 @@ if __name__ == '__main__':
 
     folder = args.folder
     if not os.path.isdir(folder):
-        print('%s: %s: no such directory.' % (os.path.basename(sys.argv[0]),folder))
+        print(f'{os.path.basename(sys.argv[0])}: {folder}: no such directory.')
         sys.exit(1)
 
     err_max = args.threshold
+    verbose = args.verbose
 
     features_to_consider = []
     if args.features != 'all':
@@ -129,22 +190,8 @@ if __name__ == '__main__':
 
     for feature in features_to_ignore:
         if feature in features_to_consider:
-            print('Feature "%s" is both to consider and to ignore...' % feature)
+            print(f'Feature "{feature}" is both to consider and to ignore.')
             sys.exit(1)
-
-    do_all = args.all
-    verbose = args.verbose
-
-    map_func = map
-    if args.parallel:
-        if not do_all:
-            print('Ignoring the --parallel option.')
-        else:
-            try:
-                from scoop import futures
-                map_func = futures.map
-            except:
-                print('SCOOP not found: will run serially.')
 
     final_pop = np.array(pickle.load(open(folder + '/final_population.pkl', 'rb'), encoding='latin1'))
     # remove duplicate individuals
@@ -157,55 +204,72 @@ if __name__ == '__main__':
     target_features = json.load(open(folder + '/features.json','r'))
 
     good_individuals_hof = []
-    for individual,(i,resp) in zip(hof,enumerate(hof_responses)):
+    for i,(individual,response) in enumerate(zip(hof,hof_responses)):
         if verbose:
             print('----------------------------------')
-            print('Individual %02d' % (i+1))
+            print(f'Hall-of-fame individual #{i+1}')
+            printed_header = True
+        else:
+            printed_header = False
         good = True
-        check_spike_count = False
-        good_spike_count = None
-        for step_name in resp:
-            step = step_name.split('.')[0]
+        for step_name, trace in response.items():
+            proto_name, site, _ = step_name.split('.')
             if verbose:
-                print('  %s' % step)
-            stim_start = evaluator.fitness_protocols[step].stimuli[0].step_delay
-            stim_end = stim_start + evaluator.fitness_protocols[step].stimuli[0].step_duration
-            trace = {'T': resp[step+'.soma.v']['time'],
-                     'V': resp[step+'.soma.v']['voltage'],
-                     'stim_start': [stim_start], 'stim_end': [stim_end]}
-            feature_names = [key for key in target_features[step]['soma']]
-            feature_values = efel.getFeatureValues([trace],feature_names)
-            for name in feature_names:
-                m = target_features[step]['soma'][name][0]
-                s = target_features[step]['soma'][name][1]
-                try:
-                    err = np.abs(np.mean(feature_values[0][name]) - m) / s
-                except:
-                    err = err_max * 0.9
-                    check_spike_count = True
-                if name == 'Spikecount':
-                    if err <= err_max:
-                        good_spike_count = True
-                    else:
-                        good_spike_count = False
-                if err > err_max:
-                    if not name in features_to_ignore:
+                print(f'  {step_name}')
+                printed_step_name = True
+            else:
+                printed_step_name = False
+            stim_start = evaluator.fitness_protocols[proto_name].stimuli[0].step_delay
+            stim_end = stim_start + evaluator.fitness_protocols[proto_name].stimuli[0].step_duration
+            feature_names = list(target_features[proto_name][site].keys())
+            thresh = None
+            for obj in evaluator.fitness_calculator.objectives:
+                if proto_name + '.' + site in obj.features[0].name:
+                    thresh = obj.features[0].threshold
+                    break
+            if thresh is None:
+                raise Exception(f'Cannot find the threshold value for protocol {proto_name} and site {site}')
+            if verbose:
+                print(f'Setting threshold for protocol {proto_name} and site {site} to {thresh} mV.')
+            efel.setThreshold(thresh)
+            feature_values = efel.getFeatureValues([
+                {'T': trace['time'], 'V': trace['voltage'],
+                 'stim_start': [stim_start], 'stim_end': [stim_end]}
+            ], feature_names)
+            for feature_name in feature_names:
+                if feature_name in feature_values[0]:
+                    m = target_features[proto_name][site][feature_name][0]
+                    s = target_features[proto_name][site][feature_name][1]
+                    err = np.abs(np.mean(feature_values[0][feature_name]) - m) / s
+                    if err > err_max and feature_name not in features_to_ignore:
                         good = False
-                        if verbose:
-                            print(colors.red('    %s = %g' % (name,err)))
+                        if not verbose and not printed_header:
+                            print('----------------------------------')
+                            print(f'Hall-of-fame individual #{i+1}')
+                            printed_header = True
+                        if not verbose and not printed_step_name:
+                            print(f'  {proto_name}')
+                            printed_proto_name = True
+                        print(colors.red(f'    {feature_name} = {err}'))
+                    elif verbose and err > err_max and feature_name in features_to_ignore:
+                        print(colors.yellow(f'    {feature_name} = {err}'))
                     elif verbose:
-                        print(colors.yellow('    %s = %g' % (name,err)))
-                elif verbose:
-                    print(colors.green('    %s = %g' % (name,err)))
-        if check_spike_count and good_spike_count is not None and not good_spike_count:
-            # accept an individual that does not have the values of some features,
-            # as long as its spike count is lower than err_max
-            good = False
+                        print(colors.green(f'    {feature_name} = {err}'))
+                else:
+                    if not printed_header:
+                        print('----------------------------------')
+                        print(f'Final population individual #{i+1}')
+                        printed_header = True
+                    if not printed_proto_name:
+                        print(f'  {proto_name}')
+                        printed_proto_name = True
+                    print(colors.blue(f'    {feature_name} was not computed'))
+
         if good:
             good_individuals_hof.append(i)
-            print('Individual ' + colors.green('%03d'%(i+1)) + ' of the hall-of-fame ' + colors.green('matches') + ' the requisites.')
+            print('Individual ' + colors.green(f'{i+1:03d}') + ' of the hall-of-fame ' + colors.green('matches') + ' the requisites.')
         else:
-            print('Individual ' + colors.red('%03d'%(i+1)) + ' of the hall-of-fame ' + colors.red('does not match') + ' the requisites.')
+            print('Individual ' + colors.red(f'{i+1:03d}') + ' of the hall-of-fame ' + colors.red('does not match') + ' the requisites.')
 
     data = {'good_individuals_hof': good_individuals_hof,
             'good_population': hof[good_individuals_hof,:],
@@ -213,17 +277,18 @@ if __name__ == '__main__':
             'features': features_to_consider,
             'ignored_features': features_to_ignore}
 
-    if do_all:
+    if args.all:
+
         good_individuals_also_in_hof = []
         for i,individual in enumerate(final_pop):
-            idx = (individual == hof).all(axis=1).nonzero()[0]
+            idx = (individual == hof).all(axis = 1).nonzero()[0]
             if len(idx) > 0:
                 if idx[0] in good_individuals_hof:
                     good_individuals_also_in_hof.append(i)
-                    print('Individual ' + colors.green('%03d'%(i+1)) + ' is in the hall-of-fame (#{}) and '.format(idx[0]+1) + \
+                    print('Individual ' + colors.green(f'{i+1:03d}') + f' is in the hall-of-fame (#{idx[0]+1}) and ' + \
                           colors.green('matches') + ' the requisites.')
                 else:
-                    print('Individual ' + colors.red('%03d'%(i+1)) + ' is in the hall-of-fame (#{}) and '.format(idx[0]+1) + \
+                    print('Individual ' + colors.red(f'{i+1:03d}') + f' is in the hall-of-fame (#{idx[0]+1}) and ' + \
                           colors.red('does not match') + ' the requisites.')
 
         swc_file = glob.glob(folder + '/*.converted.swc')[0]
@@ -239,36 +304,39 @@ if __name__ == '__main__':
             config = json.load(open(config_file,'r'))[cell_name]
             mechs = extract_mechanisms(config_file, cell_name)
 
-        protocols_names = list(protocols.keys())
-        k = protocols_names[0]
-        stim_dur = protocols[k]['stimuli'][0]['duration']
-        stim_start = protocols[k]['stimuli'][0]['delay']
-        I = [proto['stimuli'][0]['amp']*1e3 for _,proto in protocols.items()]
-        idx = argsort(I)
-        I = [I[i] for i in idx]
-        protocols_names = [protocols_names[i] for i in idx]
+        sim_pars = pickle.load(open(folder + '/simulation_parameters.pkl','rb'))
 
-        args = {'swc_file': swc_file,
-                'final_pop': final_pop,
-                'evaluator': evaluator,
-                'I': I,
-                'stim_dur': stim_dur,
-                'stim_start': stim_start,
-                'mechs': mechs,
-                'target_features': target_features,
-                'protocols_names': protocols_names,
-                'err_max': err_max,
-                'verbose': verbose}
+        kwargs = {'swc_file': swc_file,
+                  'mechs': mechs,
+                  'final_pop': final_pop,
+                  'evaluator': evaluator,
+                  'target_features': target_features,
+                  'protocols': protocols,
+                  'err_max': err_max,
+                  'replace_axon': sim_pars['replace_axon'],
+                  'add_axon_if_missing': not sim_pars['no_add_axon'],
+                  'verbose': verbose}
 
         if mech_file is None:
-            args['config'] = config
+            kwargs['config'] = config
         else:
-            args['default_parameters'] = default_parameters
+            kwargs['default_parameters'] = default_parameters
 
         individuals = [i for i in range(n_individuals) if i not in good_individuals_also_in_hof]
-        good = list(map_func(lambda i: worker(i,args), individuals))
+
+        map_func = map
+        try:
+            if args.parallel:
+                from scoop import futures
+                map_func = futures.map
+        except:
+            print('SCOOP not found: will run serially.')
+
+        good = list(map_func(lambda index: worker(index, **kwargs), individuals))
+
         good_individuals = [ind for ind,gd in zip(individuals,good) if gd]
         data['good_individuals'] = good_individuals
         data['good_population'] = np.concatenate((data['good_population'], final_pop[good_individuals,:]))
 
-    pickle.dump(data, open(folder + '/good_population_%d_STDs.pkl' % err_max, 'wb'))
+    pickle.dump(data, open(folder + f'/good_population_{err_max:g}_STDs.pkl', 'wb'))
+

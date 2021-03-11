@@ -183,7 +183,7 @@ if __name__ == '__main__':
     except:
         sim_pars = None
 
-    if args.replace_axon == None:
+    if args.replace_axon is None:
         if sim_pars is None:
             replace_axon = False
         else:
@@ -198,7 +198,7 @@ if __name__ == '__main__':
             print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
             sys.exit(7)
 
-    if args.add_axon_if_missing == None:
+    if args.add_axon_if_missing is None:
         if sim_pars is None:
             add_axon_if_missing = True
         else:

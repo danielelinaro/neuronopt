@@ -20,18 +20,26 @@ def make_cell(swc_file, parameters, mechanisms, cell_name=None, replace_axon=Fal
     return cell
 
 
-def make_recorders(cell, h, apical_dst={}, basal_dst={}, mech_vars=None):
+def make_recorders(cell, h, apical_dst=None, basal_dst=None, mech_vars=None):
     recorders = {'spike_times': h.Vector()}
     apc = h.APCount(cell.morpho.soma[0](0.5))
     apc.thresh = -20.
     apc.record(recorders['spike_times'])
 
-    for lbl in 't','soma.v','soma.cai','soma.ica':
+    for lbl in 't','soma.v':
         recorders[lbl] = h.Vector()
     recorders['t'].record(h._ref_t)
     recorders['soma.v'].record(cell.morpho.soma[0](0.5)._ref_v)
-    recorders['soma.cai'].record(cell.morpho.soma[0](0.5)._ref_cai)
-    recorders['soma.ica'].record(cell.morpho.soma[0](0.5)._ref_ica)
+    try:
+        recorders['soma.cai'] = h.Vector()
+        recorders['soma.cai'].record(cell.morpho.soma[0](0.5)._ref_cai)
+    except:
+        pass
+    try:
+        recorders['soma.ica'] = h.Vector()
+        recorders['soma.ica'].record(cell.morpho.soma[0](0.5)._ref_ica)
+    except:
+        pass
 
     if cell.n_axonal_sections > 0:
         recorders['axon.v'] = h.Vector()
@@ -49,11 +57,18 @@ def make_recorders(cell, h, apical_dst={}, basal_dst={}, mech_vars=None):
                 for k,v in apical_dst.items():
                     if not k+'.v' in recorders and h.distance(1, seg.x, sec=sec) >= v:
                         apical_seg[k] = seg
-                        for lbl in '.v','.cai','.ica':
-                            recorders[k+lbl] = h.Vector()
+                        recorders[k+'.v'] = h.Vector()
                         recorders[k+'.v'].record(seg._ref_v)
-                        recorders[k+'.cai'].record(seg._ref_cai)
-                        recorders[k+'.ica'].record(seg._ref_ica)
+                        try:
+                            recorders[k+'.cai'] = h.Vector()
+                            recorders[k+'.cai'].record(seg._ref_cai)
+                        except:
+                            pass
+                        try:
+                            recorders[k+'.ica'] = h.Vector()
+                            recorders[k+'.ica'].record(seg._ref_ica)
+                        except:
+                            pass
                         print('Adding recorder on the apical dendrite at a distance of {:.2f} um.'\
                               .format(h.distance(1, seg.x, sec=sec)))
     if basal_dst is not None and cell.n_basal_sections > 0:
@@ -63,11 +78,18 @@ def make_recorders(cell, h, apical_dst={}, basal_dst={}, mech_vars=None):
                 for k,v in basal_dst.items():
                     if not k+'.v' in recorders and h.distance(1, seg.x, sec=sec) >= v:
                         basal_seg[k] = seg
-                        for lbl in '.v','.cai','.ica':
-                            recorders[k+lbl] = h.Vector()
+                        recorders[k+'.v'] = h.Vector()
                         recorders[k+'.v'].record(seg._ref_v)
-                        recorders[k+'.cai'].record(seg._ref_cai)
-                        recorders[k+'.ica'].record(seg._ref_ica)
+                        try:
+                            recorders[k+'.cai'] = h.Vector()
+                            recorders[k+'.cai'].record(seg._ref_cai)
+                        except:
+                            pass
+                        try:
+                            recorders[k+'.ica'] = h.Vector()
+                            recorders[k+'.ica'].record(seg._ref_ica)
+                        except:
+                            pass
                         print('Adding recorder on the basal dendrite at a distance of {:.2f} um.'\
                               .format(h.distance(1, seg.x, sec=sec)))
 
@@ -163,7 +185,7 @@ def plot_results(recorders, gbars=None, apical_dst={}, basal_dst={}, x_lim=None)
     plt.show()
 
 
-def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, mechanisms, N=1, freq=np.inf,
+def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, mechanisms, after=100, N=1, freq=np.inf,
                         apical_dst={}, basal_dst={}, current_recordings='', replace_axon=False, add_axon_if_missing=True,
                         cell_name=None, neuron=None, do_plot=False, verbose=False):
 
@@ -237,7 +259,7 @@ def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, 
         except:
             pass
 
-    t_end = dur + (N-1) / freq * 1000 + delay + 100
+    t_end = dur + (N-1) / freq * 1000 + delay + after
     run_simulation(t_end, h, verbose)
 
     if do_plot:
@@ -315,7 +337,7 @@ def main():
     except:
         sim_pars = None
 
-    if args.replace_axon == None:
+    if args.replace_axon is None:
         if sim_pars is None:
             replace_axon = False
         else:
@@ -330,7 +352,7 @@ def main():
             print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
             sys.exit(7)
 
-    if args.add_axon_if_missing == None:
+    if args.add_axon_if_missing is None:
         if sim_pars is None:
             add_axon_if_missing = True
         else:

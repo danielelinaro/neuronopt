@@ -78,7 +78,7 @@ def load_backprop_data(folder_list):
     return apical_distances,apical_AP_amplitudes
 
 
-def load_fI_data(folder_list, n_stds):
+def load_fI_data(folder_list, n_stds, verbose=False):
     I = {}
     num_spikes = {}
     inverse_first_isi = {}
@@ -87,7 +87,8 @@ def load_fI_data(folder_list, n_stds):
         for i,folder in enumerate(folder_list[key]):
             try:
                 infile = folder + '/fI_curve_good_population_{}_STDs.pkl'.format(n_stds)
-                print('Loading data from file {}.'.format(infile))
+                if verbose:
+                    print('Loading data from file {}.'.format(infile))
                 data = pickle.load(open(infile, 'rb'), encoding='latin1')
             except:
                 continue

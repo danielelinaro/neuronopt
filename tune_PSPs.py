@@ -208,7 +208,7 @@ def fit_PSP_preamble(mode):
     except:
         sim_pars = None
 
-    if args.replace_axon == None:
+    if args.replace_axon is None:
         if sim_pars is None:
             replace_axon = False
         else:
@@ -223,7 +223,7 @@ def fit_PSP_preamble(mode):
             print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
             sys.exit(7)
 
-    if args.add_axon_if_missing == None:
+    if args.add_axon_if_missing is None:
         if sim_pars is None:
             add_axon_if_missing = True
         else:
@@ -1107,7 +1107,7 @@ if __name__ == '__main__':
         sim_pars = None
         print('Could not find a file containing optimization parameters.')
 
-    if args.replace_axon == None:
+    if args.replace_axon is None:
         if sim_pars is None:
             replace_axon = False
         else:
@@ -1122,7 +1122,7 @@ if __name__ == '__main__':
             print('Unknown value for --replace-axon: "{}".'.format(args.replace_axon))
             sys.exit(7)
 
-    if args.add_axon_if_missing == None:
+    if args.add_axon_if_missing is None:
         if sim_pars is None:
             add_axon_if_missing = True
         else:

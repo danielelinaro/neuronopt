@@ -255,7 +255,7 @@ def build():
 
 
 def copy_node(node_in, index=None):
-    if index == None:
+    if index is None:
         index = node_in.index
     node_out = btmorph.SNode2(index)
     p3d_in = node_in.content['p3d']
