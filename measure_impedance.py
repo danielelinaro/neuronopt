@@ -16,7 +16,7 @@ import btmorph
 progname = os.path.basename(sys.argv[0])
 
 
-def measure_impedance(cell, segment, stim_pars, neuron):
+def measure_impedance(cell, segment, stim_pars, neuron, full_output=False):
 
     recorders = {}
     for lbl in 't', 'v':
@@ -31,25 +31,29 @@ def measure_impedance(cell, segment, stim_pars, neuron):
     stim.amp = stim_pars['amplitude']
 
     neuron.h.v_init = -60
-    neuron.h.tstop = stim.delay + stim.dur
+    neuron.h.tstop = stim.delay + stim.dur + 200
     neuron.h.t = 0
     neuron.h.run()
 
     t = np.array(recorders['t'])
     v = np.array(recorders['v'])
 
-    idx, = np.where(t > stim.delay)
+    idx, = np.where((t > stim.delay) & (t < stim.delay + stim.dur))
     v0 = v[idx[0] - 10]
     v1 = v[idx[-1]]
     dv = (v1 - v0) * 1e-3 # [mV]
     di = stim.amp * 1e-9  # [A]
     R = dv / di * 1e-6    # [MOhm]
 
+    if full_output:
+        return R, t, v
+
     return R
 
 
 def worker(segment_num, segment_group, stim_pars, swc_file, parameters,
-           mechanisms, replace_axon, add_axon_if_missing, passive_cell, cell_id=0):
+           mechanisms, replace_axon, add_axon_if_missing, passive_cell,
+           cell_id=0, full_output=False):
 
     import neuron
     from dlutils.cell import Cell
@@ -70,13 +74,16 @@ def worker(segment_num, segment_group, stim_pars, swc_file, parameters,
         segments = cell.apical_segments
 
     try:
-        R = measure_impedance(cell, segments[segment_num]['seg'], stim_pars, neuron)
+        res = measure_impedance(cell, segments[segment_num]['seg'], stim_pars, neuron, full_output)
     except:
-        R = -1
+        if full_output:
+            res = -1, None, None
+        else:
+            res = -1
 
     neuron.h('forall delete_section()')
 
-    return R
+    return res
 
 
 def plot_morpho(data, n_levels=64):
@@ -104,6 +111,7 @@ def plot_morpho(data, n_levels=64):
 
     X = np.concatenate(list(data['centers'].values()))
     R = np.concatenate(list(data['R'].values()))
+
     R_min = 10 # R.min()
     R_max = 2000 # R.max()
 
@@ -204,8 +212,8 @@ if __name__ == '__main__':
     parser.add_argument('--trial-run', action='store_true', help='measure impedance in a random sample of 3 basal and 3 apical synapses')
     parser.add_argument('--model-type', type=str, default='active',
                         help='whether to use a passive or active model (accepted values: "active" (default) or "passive")')
-    parser.add_argument('--plot', type=str, default='yes',
-                        help='whether to plot a summary figure (accepted values: "yes" (default) or "no")')
+    parser.add_argument('--full-output', action='store_true', help='save also voltage traces')
+    parser.add_argument('--plot', action='store_true', help='plot a summary figure')
 
     args = parser.parse_args(args=sys.argv[1:])
 
@@ -328,7 +336,13 @@ if __name__ == '__main__':
         cell = Cell('CA3_cell_{}'.format(i), swc_file, parameters, mechanisms)
         cell.instantiate(replace_axon, add_axon_if_missing, force_passive=passive_cell)
 
-        R = {'soma': np.array([measure_impedance(cell, cell.somatic_segments[0]['seg'], stim_pars, neuron)])}
+        res = measure_impedance(cell, cell.somatic_segments[0]['seg'], stim_pars, neuron, args.full_output)
+        if args.full_output:
+            R = {'soma': np.array(res[:1])}
+            time = {'soma': [res[1]]}
+            Vm = {'soma': [res[2]]}
+        else:
+            R = {'soma': np.array([res])}
         print('Somatic impedance: {:.2f} MOhm.'.format(R['soma'][0]))
 
         centers = {'soma': np.array([cell.somatic_segments[0]['center']])}
@@ -348,7 +362,7 @@ if __name__ == '__main__':
     
         idx = {k: np.arange(v) for k,v in N.items()}
         if args.trial_run:
-            idx = {k: np.random.choice(v, size=3, replace=False) for k,v in idx.items()}
+            idx = {k: np.random.choice(v, size=50, replace=False) for k,v in idx.items()}
 
         neuron.h('forall delete_section()')
 
@@ -358,8 +372,14 @@ if __name__ == '__main__':
             areas[dend_type] = areas[dend_type][idx[dend_type]]
             fun = lambda num: worker(num, dend_type, stim_pars, swc_file, parameters,
                                      mechanisms, replace_axon, add_axon_if_missing,
-                                     passive_cell, i)
-            R[dend_type] = np.array(list(map_fun(fun, idx[dend_type])))
+                                     passive_cell, i, args.full_output)
+            res = list(map_fun(fun, idx[dend_type]))
+            if args.full_output:
+                R[dend_type] = np.array([_[0] for _ in res])
+                time[dend_type] = [_[1] for _ in res]
+                Vm[dend_type] = [_[2] for _ in res]
+            else:
+                R[dend_type] = np.array(res)
 
         data = {
             'N': N,
@@ -394,8 +414,12 @@ if __name__ == '__main__':
             data['individual'] = individual_ids[i]
             suffix = 'individual_{}'.format(individual_ids[i])
 
+        if args.full_output:
+            data['time'] = time
+            data['Vm'] = Vm
+
         outfile = working_dir + '/' + cell_name + '_impedance_' + suffix + '_' + args.model_type + '.pkl'
         pickle.dump(data, open(outfile, 'wb'))
-        if args.plot.lower() in ('yes', 'y'):
+        if args.plot:
             plot(outfile)
 

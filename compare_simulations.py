@@ -74,22 +74,25 @@ def equal_sections(sec_a, sec_b, h, soma_a=None, soma_b=None):
         print('{} <> {}'.format(sec_a.name(), sec_b.name()))
         print('Cm: {} <> {}.'.format(sec_a.cm, sec_b.cm))
         return False
+    not_mech_names = 'v','diam','cm'
     for seg_a,seg_b in zip(sec_a,sec_b):
-        for mech_a,mech_b in zip(seg_a,seg_b):
-            if mech_a.name() != mech_b.name():
-                print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-                print('{} <> {}.'.format(mech_a.name(),mech_b.name()))
-                return False
+        if seg_a.__dict__.keys() != seg_b.__dict__.keys():
+            print('{} <> {}'.format(sec_a.name(), sec_b.name()))
+            print('{} <> {}.'.format(seg_a.__dict__.keys(), seg_b.__dict__.keys()))
+        mech_names = [k for k in seg_a.__dict__.keys() if k not in ('v','diam','cm')]
+        for mech_name in mech_names:
+            mech_a = seg_a.__getattribute__(mech_name)
+            mech_b = seg_b.__getattribute__(mech_name)
             if mech_a.__dict__.keys() != mech_b.__dict__.keys():
                 print('{} <> {}'.format(sec_a.name(), sec_b.name()))
-                print('{} <> {}.'.format(mech_a.__dict__.keys(),mech_b.__dict__.keys()))
+                print('{} <> {}.'.format(mech_a.__dict__.keys(), mech_b.__dict__.keys()))
                 return False
-            if mech_a.name() in ('ca_ion','k_ion','na_ion'):
+            if mech_name in ('ca_ion','k_ion','na_ion'):
                 continue
             for k in mech_a.__dict__.keys():
                 attr_a = mech_a.__getattribute__(k)
                 attr_b = mech_b.__getattribute__(k)
-                if 'bar' in k and attr_a != attr_b:
+                if attr_a != attr_b: # and 'bar' in k
                     print('{} <> {}'.format(sec_a.name(), sec_b.name()))
                     print('{}: {} <> {}.'.format(k, attr_a, attr_b))
                     return False

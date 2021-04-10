@@ -331,10 +331,11 @@ if __name__ == '__main__':
     ##########################
 
     recorders = {}
-    for lbl in 'time', 'Vsoma', 'spike_times':
+    for lbl in 'time', 'Vsoma', 'Vdend', 'spike_times':
         recorders[lbl] = h.Vector()
     recorders['time'].record(h._ref_t)
     recorders['Vsoma'].record(cell.morpho.soma[0](0.5)._ref_v)
+    recorders['Vdend'].record(section(spines[0]._sec_x)._ref_v)
     apc = h.APCount(cell.morpho.soma[0](0.5))
     apc.thresh = -20
     apc.record(recorders['spike_times'])

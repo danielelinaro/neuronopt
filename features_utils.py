@@ -15,10 +15,11 @@ progname = os.path.basename(sys.argv[0])
 # of its type. The set of features that will be used in the optimization may be different, and
 # is specified by the variable "feature_names"
 feature_names_full_set = ['AP_amplitude','AP_begin_voltage','spike_half_width',
+                          'spike_width2', 'AP_duration', 'AP_duration_half_width', 
                           'time_to_first_spike','adaptation_index2',
                           'ISI_values','ISI_CV','doublet_ISI',
                           'min_AHP_values','AHP_slow_time','AHP_depth_abs_slow',
-                          'Spikecount','fast_AHP','burst_mean_freq','interburst_voltage',
+                          'fast_AHP','burst_mean_freq','interburst_voltage',
                           'AP_rise_rate','AP_fall_rate','AP_amplitude_change',
                           'AP_duration_change','AP_rise_rate_change','AP_fall_rate_change',
                           'AP_duration_half_width_change','amp_drop_first_second',
@@ -46,6 +47,8 @@ feature_names = {'CA3': ['AP_amplitude','AP_begin_voltage','spike_half_width',
                              'inv_second_ISI','inv_third_ISI','inv_fourth_ISI',
                              'inv_fifth_ISI'],
                  'BBP_CTX_bAP': ['AP_height', 'AP_width', 'Spikecount',
+                                 'voltage_base', 'AP_amplitude_from_voltagebase'],
+                 'BBP_CTX_pulses': ['AP_height', 'spike_half_width', 'Spikecount',
                                  'voltage_base', 'AP_amplitude_from_voltagebase'],
                  'BBP_HPC': ['voltage_base', 'steady_state_voltage',
                              'voltage_deflection', 'voltage_deflection_begin',
@@ -538,11 +541,12 @@ def extract_features_from_LCG_files(files_in, kernel_file, file_out, AP_threshol
     pickle.dump(data,open(file_out,'wb'))
 
 
-def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, sampling_rate, \
-                               cutoff=np.inf, full_output=False):
+def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, sampling_rate,
+                               cutoff, n_pulses, min_pulse_frequency, step_pulse_frequency, full_output):
     import igor.binarywave as ibw
     import efel
     efel.setThreshold(AP_threshold)
+
     data = ibw.load(file_in)
     voltage = data['wave']['wData']
     if len(voltage.shape) == 1:
@@ -554,14 +558,26 @@ def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, samp
         b,a = butter(2, cutoff/sampling_rate/2)
         voltage = filtfilt(b, a, voltage, axis=1)
     time = np.arange(voltage.shape[1]) / sampling_rate
-
+    n_traces = voltage.shape[0]
     stim_end = stim_start + stim_dur
-    if stim_dur > 100:
-        idx, = np.where((time>stim_start-10) & (time<=stim_end+10))
-    else:
-        idx, = np.where((time>stim_start-5) & (time<=stim_end+5))
-    traces = [{'T': time[idx], 'V': sweep[idx], 'stim_start': [stim_start], 'stim_end': [stim_end]} \
-              for sweep in voltage]
+    
+    if n_pulses > 1:
+        pulse_frequencies = np.arange(min_pulse_frequency,
+                                      min_pulse_frequency + n_traces * step_pulse_frequency,
+                                      step_pulse_frequency)
+        stim_end += (n_pulses - 1) / pulse_frequencies * 1e3
+
+    traces = []
+    for i,sweep in enumerate(voltage):
+        if stim_dur > 100 or True:
+            idx, = np.where((time > stim_start - 10) & (time <= stim_end[i] + 50))
+        else:
+            idx, = np.where((time > stim_start - 5) & (time <= stim_end[i] + 5))
+        traces.append({'T': time[idx],
+                       'V': sweep[idx],
+                       'stim_start': [stim_start],
+                       'stim_end': [stim_end[i]]})
+
     voltage_range = [np.min(voltage),np.max(voltage)]
     recording_dur = time[-1]
 
@@ -569,13 +585,14 @@ def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, samp
         plt.plot(time[idx],voltage[:,idx].T,'k',lw=1)
 
     if full_output:
-        return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur,time,voltage
+        return efel.getFeatureValues(traces, feature_names_full_set), voltage_range, recording_dur, time, voltage
 
-    return efel.getFeatureValues(traces,feature_names_full_set),voltage_range,recording_dur
+    return efel.getFeatureValues(traces, feature_names_full_set), voltage_range, recording_dur
 
 
-def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_start, AP_threshold, \
-                                sampling_rate=20, cutoff=np.inf, files_out=[], quiet=False, full_output=False):
+def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_start, AP_threshold,
+                                sampling_rate=20, cutoff=np.inf, n_pulses=1, min_pulse_frequency=None,
+                                step_pulse_frequency=None, files_out=[], quiet=False, full_output=False):
     if type(files_out) != list:
         files_out = [files_out]
     if len(files_out) == 1:
@@ -586,11 +603,17 @@ def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_sta
         to_keep = []
         offset = 0
         for i,f in enumerate(files_in):
-            print('I = %g nA.' % current_amplitudes[i])
+            print(f'     I = {current_amplitudes[i]:g} nA')
+            print(f' srate = {sampling_rate:g} kHz')
+            print(f'cutoff = {cutoff:g} kHz')
+            retvals = extract_features_from_file(f, stim_dur, stim_start, AP_threshold,
+                                                 sampling_rate, cutoff, n_pulses, min_pulse_frequency,
+                                                 step_pulse_frequency, full_output)
+            feat = retvals[0]
+            voltage_range = retvals[1]
             if full_output:
-                feat,voltage_range,_,T,V = extract_features_from_file(f, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff, full_output=True)
-            else:
-                feat,voltage_range,_ = extract_features_from_file(f, stim_dur, stim_start, AP_threshold, sampling_rate, cutoff)
+                T = retvals[3]
+                V = retvals[4]
             if 'Spikecount' in feat[0]:
                 # Spikecount feature is present
                 with_spikes = [fe['Spikecount'][0] > 0 for fe in feat]
@@ -634,7 +657,9 @@ def extract_features_from_files(files_in, current_amplitudes, stim_dur, stim_sta
         elif len(files_out) != len(files_in):
             raise Exception('There must be as many input as output files')
         for f_in,f_out in zip(files_in,files_out):
-            feat,_ = extract_features_from_file(f_in)
+            feat,_,_ = extract_features_from_file(f_in, stim_dur, stim_start, AP_threshold,
+                                                  sampling_rate, cutoff, n_pulses, min_pulse_frequency,
+                                                  step_pulse_frequency, full_output=False)
             pickle.dump(feat,open(f_out,'wb'))
 
     if not quiet:
@@ -725,8 +750,6 @@ def extract_features():
                                 prog=progname+' extract')
     parser.add_argument('-d', '--folder', default=None,
                         help='the folder where data is stored')
-    parser.add_argument('-f', '--file', default=None,
-                        help='the file where data is stored')
     parser.add_argument('-F', '--sampling-rate', default=20., type=float,
                         help='the sampling rate at which data was recorded (default 20 kHz)')
     parser.add_argument('--cutoff', default=np.inf, type=float,
@@ -745,9 +768,17 @@ def extract_features():
                         help='current pulse (default 2 nA)')
     parser.add_argument('--spike-threshold', default=-20., type=float,
                         help='spike threshold (default -20 mV)')
+    parser.add_argument('--n-steps', default=1, type=int,
+                        help='number of consecutive current stimuli (default 1)')
+    parser.add_argument('--min-step-frequency', default=None, type=float,
+                        help='minimum frequency of the current stimuli (default None)')
+    parser.add_argument('--delta-step-frequency', default=None, type=float,
+                        help='frequency step of the current stimuli (default None)')
     parser.add_argument('--quiet', action='store_true', help='be quiet')
     parser.add_argument('--full-output', action='store_true',
                         help='save an additional pickle file with the voltage traces')
+    parser.add_argument('file', type=str, action='store',
+                        help='the file where data is stored')
 
     args = parser.parse_args(args=sys.argv[2:])
 
@@ -871,6 +902,7 @@ def extract_features():
     else:
         extract_features_from_files(files_in, current_amplitudes, args.stim_dur, args.stim_start,
                                     args.spike_threshold, args.sampling_rate, args.cutoff,
+                                    args.n_steps, args.min_step_frequency, args.delta_step_frequency,
                                     files_out=[folder+'/'+file_out], quiet=args.quiet, full_output=args.full_output)
 
     plt.xlabel('Time (ms)')

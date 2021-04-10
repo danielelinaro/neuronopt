@@ -133,7 +133,7 @@ def worker(cell_id, **kwargs):
                             print(f'Final population individual #{i+1}')
                             printed_header = True
                         if not verbose and not printed_proto_name:
-                            print(f'  {proto_name}')
+                            print(f'  {proto_name}.{site}')
                             printed_proto_name = True
                         print(colors.red(f'    {feature_name} = {err}'))
                     elif verbose and err > err_max and feature_name in features_to_ignore:
@@ -146,7 +146,7 @@ def worker(cell_id, **kwargs):
                         print(f'Final population individual #{i+1}')
                         printed_header = True
                     if not printed_proto_name:
-                        print(f'  {proto_name}')
+                        print(f'  {proto_name}.{site}')
                         printed_proto_name = True
                     print(colors.blue(f'    {feature_name} was not computed'))
 
@@ -215,7 +215,7 @@ if __name__ == '__main__':
         for step_name, trace in response.items():
             proto_name, site, _ = step_name.split('.')
             if verbose:
-                print(f'  {step_name}')
+                print(f'  {proto_name}.{site}')
                 printed_step_name = True
             else:
                 printed_step_name = False
@@ -248,7 +248,7 @@ if __name__ == '__main__':
                             print(f'Hall-of-fame individual #{i+1}')
                             printed_header = True
                         if not verbose and not printed_step_name:
-                            print(f'  {proto_name}')
+                            print(f'  {proto_name}.{site}')
                             printed_proto_name = True
                         print(colors.red(f'    {feature_name} = {err}'))
                     elif verbose and err > err_max and feature_name in features_to_ignore:
@@ -261,7 +261,7 @@ if __name__ == '__main__':
                         print(f'Final population individual #{i+1}')
                         printed_header = True
                     if not printed_proto_name:
-                        print(f'  {proto_name}')
+                        print(f'  {proto_name}.{site}')
                         printed_proto_name = True
                     print(colors.blue(f'    {feature_name} was not computed'))
 

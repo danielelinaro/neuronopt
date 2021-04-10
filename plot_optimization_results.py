@@ -37,7 +37,7 @@ def load_files():
     return parameters,features,mechanisms,hall_of_fame,final_pop,evaluator,responses
 
 
-def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses, individual=0, dump=False, verbose=False):
+def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses, individual=0, max_err=5., dump=False, verbose=False):
     import efel
     pop_size = len(final_pop)
     n_params = len(evaluator.param_names)
@@ -79,7 +79,8 @@ def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses,
                     break
             if thresh is None:
                 raise Exception('Cannot find the threshold value for protocol {} and site {}'.format(proto, site))
-            print('Setting threshold for protocol {} and site {} to {} mV.'.format(proto, site, thresh))
+            if verbose:
+                print('Setting threshold for protocol {} and site {} to {} mV.'.format(proto, site, thresh))
             efel.setThreshold(thresh)
             feature_values = efel.getFeatureValues([trace],feature_names)[0]
             features[proto][site] = {k: [np.mean(v),np.std(v)] if v is not None else [None,None] \
@@ -209,28 +210,27 @@ def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses,
             for x,y in zip(X,Y):
                 ax.add_patch(Rectangle((0,y-0.3),x,2*0.3,\
                                        edgecolor=green,facecolor=green,linewidth=1))
-            ax.plot([5,5],[np.min(Y)-1,np.max(Y)+1],'r--',lw=1)
+            ax.plot(max_err + np.zeros(2), [np.min(Y) - 1, np.max(Y) + 1], 'r--', lw=1)
             ax.set_title('{}.{}'.format(proto,site),fontsize=fnt)
-            if np.max(X) > 31:
+            ax.set_xlim([0, np.max([max_err + 1, np.ceil(np.nanmax(X))])])
+            ax.set_ylim([np.min(Y) - 1, np.max(Y) + 1])
+            if plt.xlim()[1] > 31:
                 dtick = 10
-            elif np.max(X) > 14:
+            elif plt.xlim()[1] > 14:
                 dtick = 5
-            elif np.max(X) > 5:
+            elif plt.xlim()[1] > 5:
                 dtick = 2
             else:
                 dtick = 1
-
-            plt.xticks(np.arange(0,np.max([6,np.ceil(np.nanmax(X))+1]),dtick),fontsize=fnt)
+            plt.xticks(np.arange(0, plt.xlim()[1] + 1, dtick), fontsize=fnt)
 
             if j == 0:
-                plt.xlabel('Objective value (# std)',fontsize=fnt)
+                plt.xlabel('Objective value (# std)', fontsize=fnt)
             if i == 0:
-                plt.yticks(Y,all_feature_names,fontsize=fnt-3)
+                plt.yticks(Y, all_feature_names, fontsize=fnt-3)
             else:
-                plt.yticks(Y,[])
+                plt.yticks(Y, [])
         
-            ax.set_xlim([0,np.max([5.1,np.ceil(np.nanmax(X))])])
-            ax.set_ylim([np.min(Y)-1,np.max(Y)+1])
 
     blue = [.9,.9,1]
     ax = plt.axes([0.25,0.05,0.72,bottom/h])
@@ -257,6 +257,7 @@ def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses,
 def main():
     parser = arg.ArgumentParser(description='Plot results of the optimization.', prog=os.path.basename(sys.argv[0]))
     parser.add_argument('individuals', type=int, action='store', nargs='*', default=[0], help='individuals to plot')
+    parser.add_argument('--max-err', default=5., type=float, help='maximum error value in units of STDs')
     parser.add_argument('-a', '--all', action='store_true', help='plot all individuals')
     parser.add_argument('-d', '--dump', action='store_true', help='dump traces and error values')
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose')
@@ -280,7 +281,7 @@ def main():
         individuals = args.individuals
 
     for ind in individuals:
-        plot_summary(features,hall_of_fame,final_pop,evaluator,responses,ind,args.dump,args.verbose)
+        plot_summary(features, hall_of_fame, final_pop, evaluator, responses, ind, args.max_err, args.dump, args.verbose)
     
 
 if __name__ == '__main__':
