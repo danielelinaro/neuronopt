@@ -7,6 +7,7 @@ from itertools import chain
 import argparse as arg
 
 import numpy as np
+import pandas as pd
 from scipy.optimize import minimize, minimize_scalar
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 7})
@@ -20,6 +21,9 @@ from dlutils.cell import Cell, branch_order
 from dlutils.synapse import AMPAExp2Synapse, NMDAExp2Synapse
 from dlutils.spine import Spine
 from dlutils.numerics import double_exp
+
+
+progname = os.path.basename(sys.argv[0])
 
 
 def compute_Rin(seg, I0, do_plot=False):
@@ -249,6 +253,8 @@ if __name__ == '__main__':
         if args.output_file is not None:
             output_file = args.output_file
             output_folder,filename = os.path.split(output_file)
+            if output_folder == '':
+                output_folder = '.'
             suffix,_ = os.path.splitext(filename)
         else:
             output_folder = args.output_dir
@@ -357,7 +363,7 @@ if __name__ == '__main__':
 
         tr = 1          # [ms] rise time constant
         td = 10         # [ms] decay time constant
-        t_end = np.max(list(t_onset.values())) + 50     # [ms]
+        t_end = np.max(list(t_onset.values())) + 200     # [ms]
         dt = 0.1        # [ms]
         time = np.arange(0, t_end, dt)
         EPSP = {k: double_exp(tr, td, t_onset[k], time) for k in t_onset}
@@ -394,7 +400,7 @@ if __name__ == '__main__':
             opt = minimize(lambda x: cost(x, target_dV, vec, time, EPSP, rec, t_onset), \
                            weights_0, \
                            bounds = bounds, \
-                           options = {'maxiter': args.max_iter, 'disp': True, 'ftol': 1})
+                           options = {'maxiter': args.max_iter, 'disp': True, 'ftol': 0.1})
             weights = opt.x
 
 
@@ -403,8 +409,8 @@ if __name__ == '__main__':
         print('Cost: {:.3e}.'.format(c))
 
         locations.append('soma')
-    
-        neuron.h('forall delete_section()')
+
+        #neuron.h('forall delete_section()')
 
         col = {'spine': 'g', 'dend': 'm', 'soma': 'k'}
         plt.figure(figsize=(3,2))
@@ -472,6 +478,10 @@ if __name__ == '__main__':
                 'swc_file': os.path.abspath(args.swc_file), 'parameters': parameters, 'individual': individual_id,
                 'section_num': section_num, 'segment_x': segment_x, 'segment_num': segment_num}
 
+        data['time'] = np.array(rec['t'])
+        for loc in locations:
+            data['V' + loc] = np.array(rec[loc])
+
         if len(params_files) > 0:
             data['params_file'] = os.path.abspath(params_file)
         else:
@@ -479,5 +489,16 @@ if __name__ == '__main__':
 
         pickle.dump(data, open(output_file, 'wb'))
 
-
+        df1 = pd.DataFrame({'x': segment_center[0], 'y': segment_center[1], 'z': segment_center[2],
+                            'dendrite_impedance': R_dend, 'neck_impedance': R_neck, 'amplitude_ratio': AR}, index=[0])
+        tmp = {'time': data['time']}
+        for loc in locations:
+            tmp['V' + loc] = data['V' + loc]
+        df2 = pd.DataFrame(tmp)
+        df = pd.concat([df1, df2], axis=1, ignore_index=True)
+        df.columns = 'x', 'y', 'z', 'dendrite_impedance', 'neck_impedance', 'amplitude_ratio', \
+                     'Time', 'V' + locations[0], 'V' + locations[1], 'V' + locations[2]
+        xls_file = os.path.splitext(output_file)[0] + '.xlsx'
+        with pd.ExcelWriter(xls_file) as writer:
+            df.to_excel(writer)
 
