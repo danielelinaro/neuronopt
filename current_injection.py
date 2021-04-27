@@ -132,7 +132,7 @@ def make_recorders(cell, h, apical_dst=None, basal_dst=None, mech_vars=None):
     return recorders,apc,gbars
 
 
-def run_simulation(tstop, h, verbose=False):
+def run_simulation(tstop, h, cell_name=None, verbose=False):
     h.cvode_active(1)
     h.tstop = tstop
     fmt = lambda now: '%02d:%02d:%02d' % (now.tm_hour,now.tm_min,now.tm_sec)
@@ -260,7 +260,7 @@ def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, 
             pass
 
     t_end = dur + (N-1) / freq * 1000 + delay + after
-    run_simulation(t_end, h, verbose)
+    run_simulation(t_end, h, cell_name, verbose)
 
     if do_plot:
         plot_results(recorders, gbars, apical_dst, basal_dst, x_lim=[delay-50, t_end])

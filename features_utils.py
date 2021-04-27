@@ -437,10 +437,6 @@ def write_features_xls():
     else:
         with_bap = False
 
-    if with_bap and n_recording_sites == 1:
-        print('{}: cannot have b-AP stimulus with just one recording site.'.format(progname))
-        sys.exit(8)
-
     if args.bap_amplitude is not None:
         bap_amplitude = args.bap_amplitude
     if args.bap_dur is not None:
@@ -466,12 +462,23 @@ def write_features_xls():
     protocols = OrderedDict()
 
     if with_bap:
+        try:
+            extra_recordings_bap = json.load(open('extra_recordings.json','r'))
+        except:
+            print('{}: file `extra_recordings.json` is required when b-AP protocol is present.'.format(progname))
+            sys.exit(10)
+        recording_sites_bap = recording_sites.copy()
+        for extra_rec in extra_recordings_bap['bAP']['extra_recordings']:
+            recording_sites_bap.append(extra_rec['name'])
         protocols['bAP'] = {'stimuli': [
-            {'delay': bap_delay, 'amp': bap_amplitude, 'duration': bap_dur, \
-             'totduration': bap_delay+bap_dur+100, 'type': 'somatic'}
+            {'delay': bap_delay,
+             'amp': bap_amplitude,
+             'duration': bap_dur,
+             'totduration': bap_delay + bap_dur + 100,
+             'type': 'somatic'}
         ]}
-        protocols['bAP']['extra_recordings'] = extra_recordings['bAP']['extra_recordings']
-        features['bAP'] = {site: read_sheet(book, 'bAP', site) for site in recording_sites}
+        protocols['bAP']['extra_recordings'] = extra_recordings_bap['bAP']['extra_recordings']
+        features['bAP'] = {site: read_sheet(book, 'bAP', site) for site in recording_sites_bap}
 
     for i in range(n_steps):
         step = 'Step{}'.format(i + args.step_start)
@@ -485,8 +492,6 @@ def write_features_xls():
             protocols[step]['stimuli'][0]['somadistance'] = injection_site_distance
         else:
             protocols[step]['stimuli'][0]['type'] = 'somatic'
-        if step in extra_recordings:
-            protocols[step]['extra_recordings'] = extra_recordings[step]['extra_recordings']
         features[step] = {}
         for recording_site in recording_sites:
             feat = read_sheet(book, step, recording_site)
@@ -494,6 +499,14 @@ def write_features_xls():
                 print('{} does not contain a sheet named {} or {}.'.format(xls_file, step, step+'_'+recording_site))
                 continue
             features[step][recording_site] = feat
+            try:
+                extra_recording_sites = [extra_rec['name'] for extra_rec in extra_recordings[step]['extra_recordings']]
+                idx = extra_recording_sites.index(recording_site)
+                if 'extra_recordings' not in protocols[step]:
+                    protocols[step]['extra_recordings'] = []
+                protocols[step]['extra_recordings'].append(extra_recordings[step]['extra_recordings'][idx])
+            except:
+                pass
 
     if args.suffix != '':
         if args.suffix[0] in ('-','_'):
