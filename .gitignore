@@ -20,3 +20,4 @@ __pycache__
 !mechanisms/*.mod
 !mechanisms_hbp/*.mod
 !mechanisms_hpc/*.mod
+synaptic_cooperativity

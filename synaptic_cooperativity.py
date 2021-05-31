@@ -44,7 +44,7 @@ make_poisson_spike_train = lambda rate, tend=None, Nev=None, refractory_period=0
 
 if __name__ == '__main__':
 
-    parser = arg.ArgumentParser(description='Compute the f-I curve of a neuron model.')
+    parser = arg.ArgumentParser(description='Simulate the activation of spines on the dendrite of a neuron model.')
     parser.add_argument('config_file', type=str, action='store', help='configuration file')
     parser.add_argument('--plot-morpho', action='store_true',
                         help='plot the morphology with the spines highlighted (default: no)')
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     try:
         seed = config['seed']
     except:
-        with open('/dev/random', 'rb') as fid:
+        with open('/dev/urandom', 'rb') as fid:
             seed = int.from_bytes(fid.read(4), 'little')
             config['seed'] = seed
 
@@ -254,46 +254,61 @@ if __name__ == '__main__':
 
     # spines will be activated in a Poisson fashion with this average interval between activations
     F_burst = config['synaptic_activation_frequency']
-    n_bursts = stim_dur * F_burst
-    if n_bursts > 0:
-        presyn_burst_times = 2 * delay + make_poisson_spike_train(F_burst, Nev=n_bursts,
-                                                                  refractory_period=0.1 / F_burst,
-                                                                  random_state=rs) * 1e3
-        presyn_burst_times = presyn_burst_times[presyn_burst_times < delay + stim_dur]
+    if F_burst > 0:
+        n_bursts = stim_dur * F_burst
+        if n_bursts > 0:
+            presyn_burst_times = 2 * delay + make_poisson_spike_train(F_burst, Nev=n_bursts,
+                                                                      refractory_period=0.1 / F_burst,
+                                                                      random_state=rs) * 1e3
+            presyn_burst_times = presyn_burst_times[presyn_burst_times < delay + stim_dur]
     
-        try:
-            F = config['poisson_frequency']
-            poisson = True
-        except:
-            poisson = False
-            spike_dt = config['spike_dt']
+            try:
+                F = config['poisson_frequency']
+                if F <= 0:
+                    raise Exception('poisson_frequency must be > 0')
+                poisson = True
+            except:
+                poisson = False
+                spike_dt = config['spike_dt']
         
-        presyn_spike_times = [np.array([]) for _ in range(n_spines)]
+            presyn_spike_times = [np.array([]) for _ in range(n_spines)]
 
-        for t0 in presyn_burst_times:
-            if poisson:
-                spks = make_poisson_spike_train(F, Nev=n_spines,
-                                                refractory_period=config['sim']['dt'] * 5 * 1e-3,
-                                                random_state=rs) * 1e3
-                for i,j in enumerate(rs.permutation(n_spines)):
-                    presyn_spike_times[j] = np.append(presyn_spike_times[j], t0 + spks[i])
-            else:
-                for i in range(n_spines):
-                    presyn_spike_times[i] = np.append(presyn_spike_times[i], t0 + i * spike_dt)
+            for t0 in presyn_burst_times:
+                if poisson:
+                    spks = make_poisson_spike_train(F, Nev=n_spines,
+                                                    refractory_period=config['sim']['dt'] * 5 * 1e-3,
+                                                    random_state=rs) * 1e3
+                    for i,j in enumerate(rs.permutation(n_spines)):
+                        presyn_spike_times[j] = np.append(presyn_spike_times[j], t0 + spks[i])
+                else:
+                    for i in range(n_spines):
+                        presyn_spike_times[i] = np.append(presyn_spike_times[i], t0 + i * spike_dt)
 
+        else:
+            logger.info('No presynaptic stimulation')
+            presyn_burst_times = np.array([])
+            presyn_spike_times = np.array([])
+
+    else:
+        F_burst *= -1
+        T = 1 / F_burst * 1e3
+        presyn_spike_times = [np.sort(config['sim']['delay'] + (n_spines - 1) * T - np.arange(i) * T) for i in range(n_spines, 0, -1)]
+        for i in range(n_spines):
+            for j in range(len(presyn_spike_times[i])):
+                presyn_spike_times[i][j] += i * config['spike_dt']
+        presyn_burst_times = presyn_spike_times[0]
+        stim_dur = n_spines * T
+        tstop = delay + stim_dur + after
+
+    if len(presyn_spike_times) > 0:
         logger.info('Presynaptic spike times:')
         for i in range(n_spines):
             # sort the presynaptic spike times so that we never run in the situation that
             # the i-th spike should have arrived before the (i-1)-th, which messes up NEURON
             presyn_spike_times[i] = np.sort(presyn_spike_times[i])
             logger.info(f'Spine {i+1}: t = {presyn_spike_times[i]}')
-
         for syn, spks in zip(synapses, presyn_spike_times):
             syn.set_presynaptic_spike_times(spks)
-    else:
-        logger.info('No presynaptic stimulation')
-        presyn_burst_times = np.array([])
-        presyn_spike_times = np.array([])
 
     ############################
     ### make the OU stimulus ###
