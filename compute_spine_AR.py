@@ -235,8 +235,8 @@ if __name__ == '__main__':
         print('Unable to interpret `{}`.'.format(args.segment))
         sys.exit(10)
 
-    if dendrite not in ('apical','basal'):
-        print('segment must be located either on basal or apical dendrites.')
+    if dendrite not in ('apical','basal','soma'):
+        print('segment must be located either on basal or apical dendrites or in the soma.')
         sys.exit(11)
 
     if args.output_file is not None and len(population) > 1:
@@ -278,6 +278,9 @@ if __name__ == '__main__':
             elif dendrite == 'basal':
                 section = cell.morpho.dend[section_num]
                 all_segments = cell.basal_segments
+            elif dendrite == 'soma':
+                section = cell.morpho.soma[section_num]
+                all_segments = cell.somatic_segments
 
             segment = section(segment_x)
 
@@ -285,6 +288,7 @@ if __name__ == '__main__':
                 if all_segments[segment_num]['seg'] == segment:
                     seg = all_segments[segment_num]
                     break
+            print(f'{dendrite}[{section_num}]({segment_x}) is {dendrite}_{segment_num}')
 
         elif seg_sel_mode == 'seq':
 
@@ -294,6 +298,9 @@ if __name__ == '__main__':
             elif dendrite == 'basal':
                 seg = cell.basal_segments[segment_num]
                 all_sections = cell.morpho.dend
+            elif dendrite == 'soma':
+                seg = cell.somatic_segments[segment_num]
+                all_sections = cell.morpho.soma
 
             segment = seg['seg']
             section = seg['sec']
@@ -301,7 +308,9 @@ if __name__ == '__main__':
             for section_num in range(len(all_sections)):
                 if all_sections[section_num] == section:
                     break
-    
+            tmp = '.'.join(str(segment).split('.')[1:])
+            print(f'{dendrite}_{segment_num} is {tmp}')
+            
         segment_dst = seg['dst']
         segment_center = seg['center']
         segment_diam = segment.diam
@@ -354,11 +363,11 @@ if __name__ == '__main__':
         if args.spine_only:
             t_onset = {'spine': 150}
             weights_0 = weights[:1]
-            bounds = [(5e-3,1)]
+            bounds = [(2e-3,1)]
         else:
             t_onset = {'spine': 350, 'dend': 150}
             weights_0 = weights
-            bounds = [(5e-3,0.4), (5e-3,0.4)]
+            bounds = [(2e-3,0.4), (2e-3,0.4)]
         t0 = np.min(list(t_onset.values()))
 
         tr = 1          # [ms] rise time constant
@@ -389,12 +398,12 @@ if __name__ == '__main__':
 
         target_dV = {k: args.target_dV for k in t_onset}
         if args.spine_only:
-            xtol = 1e-2
+            xtol = 1e-3
             opt = minimize_scalar(lambda x: cost([x], target_dV, vec, time, EPSP, rec, t_onset), \
                                   bounds = bounds[0], \
                                   method = 'Bounded', \
                                   tol = xtol, \
-                                  options = {'maxiter': args.max_iter * 3, 'disp': 3, 'xtol': xtol})
+                                  options = {'maxiter': args.max_iter * 3, 'disp': 3, 'xatol': xtol})
             weights = [opt.x]
         else:
             opt = minimize(lambda x: cost(x, target_dV, vec, time, EPSP, rec, t_onset), \

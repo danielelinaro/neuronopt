@@ -225,7 +225,7 @@ def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses,
             plt.xticks(np.arange(0, plt.xlim()[1] + 1, dtick), fontsize=fnt)
 
             if j == 0:
-                plt.xlabel('Objective value (# std)', fontsize=fnt)
+                plt.xlabel('z-score', fontsize=fnt)
             if i == 0:
                 plt.yticks(Y, all_feature_names, fontsize=fnt-3)
             else:

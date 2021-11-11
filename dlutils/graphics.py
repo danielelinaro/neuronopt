@@ -120,6 +120,9 @@ def _plot_tree_fast(tree, type_ids=(1,2,3,4), scalebar_length=None, cmap=None, p
         else:
             xyzd = np.array([[node.x, node.y, node.z, node.diam] for node in branch])
 
+        if branch[0].parent is not None and branch[0].parent.type == 1:
+            xyzd[0,-1] = xyzd[1,-1]
+
         xy = xyzd[:,:2].reshape(-1, 1, 2)
         segments = np.concatenate([xy[:-1], xy[1:]], axis=1)
         if uniform_color_branches:

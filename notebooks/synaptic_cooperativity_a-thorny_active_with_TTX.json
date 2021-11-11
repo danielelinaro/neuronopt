@@ -15,7 +15,7 @@
         "neck_diam": 0.077
     },
     "spine_distance": 5,
-    "spine_loc": 0.5,
+    "spine_loc": 0.2,
     "n_spines": 9,
     "spike_dt": 0.3,
     "NMDA": {

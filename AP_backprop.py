@@ -153,6 +153,7 @@ def inject_current_step(I, delay, dur, swc_file, parameters, mechanisms, replace
 
     h('forall delete_section()')
 
+    idx, = np.where((t > spike_times[0]-5) & (t < spike_times[0]+100))
     Vm = {area: np.array(list(map(lambda x: np.array(x)[idx], recorders[area]))) \
           for area in ('somatic','axonal','basal','apical')}
 

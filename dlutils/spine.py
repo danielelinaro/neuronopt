@@ -20,7 +20,12 @@ def make_spine_coords(points, lengths):
     if np.all(points[:,0] == points[0,0]):
         m = 0
     elif np.all(points[:,1] == points[0,1]):
-        raise NotImplementedError('Dendrite cannot be parallel to the x axis')
+        # the dendrite is parallel to the x-axis
+        n_points = len(lengths)
+        spine_points = np.tile(center, [n_points,1])
+        for i in range(n_points):
+            spine_points[i,-1] = lengths[i]
+        return spine_points
     else:
         p = np.polyfit(points[:,0], points[:,1], 1)
         m = -1 / p[0]
@@ -49,9 +54,9 @@ class Spine (object):
         idx = np.argmin(np.abs(norm_arclength - x))
         N = 3
         start = np.max([idx-N, 0])
-        stop = np.min([idx+N+1, coords.shape[0]-1])
+        stop = np.min([idx+N+1, coords.shape[0]])
         points = coords[start : stop, :]
-        lengths = diams[idx] + np.array([0, neck_L, neck_L, head_L+neck_L])
+        lengths = diams[idx] / 2 + np.array([0, neck_L, neck_L, head_L+neck_L])
         self._points = make_spine_coords(points, lengths)
         if neck_diam is None:
             neck_diam = diams[idx]
