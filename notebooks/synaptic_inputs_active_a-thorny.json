@@ -4,7 +4,7 @@
     "cell_name": "DH070213C3",
     "optimization_run": "20191206232623_DH070213C3_",
     "swc_file": "DH070213C3-.Edit.scaled.converted.swc",
-    "individual": 3,
+    "individual": 0,
     "section_num": 16,
     "Ra_neck_coeff": 1.0,
     "spine": {
@@ -13,10 +13,10 @@
         "neck_L": 1.58,
         "neck_diam": 0.077
     },
-    "spine_distance": 20,
+    "spine_distance": 5,
     "spine_loc": 0.5,
     "n_spines": 10,
-    "spike_dt": 11,
+    "spike_dt": 0.3,
     "poisson_frequency": 0,
     "synaptic_activation_frequency": -0.5,
     "E_syn": 0.0,

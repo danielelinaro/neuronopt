@@ -87,7 +87,8 @@ def plot_means_with_errorbars(x, y, mode='sem', ax=None, **kwargs):
 
 
 def _plot_tree_fast(tree, type_ids=(1,2,3,4), scalebar_length=None, cmap=None, points=None, values=None,
-                    cbar_levels=None, cbar_ticks=10, cbar_orientation='vertical', cbar_label='', ax=None):
+                    cbar_levels=None, cbar_ticks=10, cbar_orientation='vertical', cbar_label='', ax=None,
+                    bounds=None):
     
     if ax is None:
         ax = plt.gca()
@@ -132,9 +133,13 @@ def _plot_tree_fast(tree, type_ids=(1,2,3,4), scalebar_length=None, cmap=None, p
             lc.set_array(interp(xyzd[:,:3]))
         line = ax.add_collection(lc)
 
-    ax.set_xlim(tree.bounds[0])
-    ax.set_ylim(tree.bounds[1])
-    ax.axis('equal')
+    if bounds is not None:
+        ax.set_xlim(bounds[0])
+        ax.set_ylim(bounds[1])
+    else:
+        ax.set_xlim(tree.bounds[0])
+        ax.set_ylim(tree.bounds[1])
+        ax.axis('equal')
 
     if scalebar_length is not None:
         xlim = ax.get_xlim()
@@ -193,10 +198,10 @@ def _plot_tree_btmorph(tree, type_ids=(1,2,3,4), ax=None):
 
 
 def plot_tree(tree, type_ids=(1,2,3,4), scalebar_length=None, cmap=None, points=None, values=None,
-              cbar_levels=None, cbar_ticks=10, cbar_orientation='vertical', cbar_label='', ax=None):
+              cbar_levels=None, cbar_ticks=10, cbar_orientation='vertical', cbar_label='', ax=None, bounds=None):
     if isinstance(tree, Tree):
         _plot_tree_fast(tree, type_ids, scalebar_length, cmap, points, values,
-                        cbar_levels, cbar_ticks, cbar_orientation, cbar_label, ax)
+                        cbar_levels, cbar_ticks, cbar_orientation, cbar_label, ax, bounds)
     else:
         _plot_tree_btmorph(tree, type_ids, ax)
 

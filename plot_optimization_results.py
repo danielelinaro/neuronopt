@@ -154,11 +154,15 @@ def plot_summary(target_features, hall_of_fame, final_pop, evaluator, responses,
             if not key in responses[individual]:
                 continue
             resp = responses[individual][key]
+            time = resp['time'].to_numpy()
+            Vm = resp['voltage'].to_numpy()
             # this is because of the variable time-step integration
             start = np.max((0,np.where(resp['time'] > stim_start-before)[0][0] - 1))
             stop = np.where(resp['time'] < stim_end+after)[0][-1] + 2
+            if stop > time.size:
+                stop = time.size
             idx = np.arange(start,stop)
-            plt.plot(resp['time'][idx],resp['voltage'][idx]+offset,cmap[site],lw=1)
+            plt.plot(time[idx], Vm[idx] + offset, cmap[site], lw=1)
             if dump:
                 fid.write('{}.{}.time'.format(proto,site))
                 for v in resp['time'][idx]:

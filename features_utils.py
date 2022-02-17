@@ -572,7 +572,7 @@ def extract_features_from_file(file_in, stim_dur, stim_start, AP_threshold, samp
         voltage = filtfilt(b, a, voltage, axis=1)
     time = np.arange(voltage.shape[1]) / sampling_rate
     n_traces = voltage.shape[0]
-    stim_end = stim_start + stim_dur
+    stim_end = stim_start + stim_dur + np.zeros(n_traces)
     
     if n_pulses > 1:
         pulse_frequencies = np.arange(min_pulse_frequency,
@@ -1044,7 +1044,11 @@ def dump_features():
         feature_names = []
         for feat in features:
             if stepnum in feat:
-                feature_names.append(list(feat[stepnum][recording_site].keys()))
+                try:
+                    feature_names.append(list(feat[stepnum][recording_site].keys()))
+                except:
+                    import ipdb
+                    ipdb.set_trace()
         if len(feature_names) == 0:
             continue
         feature_names = list(set( chain(*feature_names) ))

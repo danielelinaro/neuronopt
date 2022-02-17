@@ -13,10 +13,10 @@
         "neck_L": 1.58,
         "neck_diam": 0.05
     },
-    "spine_distance": 2,
+    "spine_distance": 5,
     "spine_loc": 0.2,
     "n_spines": 10,
-    "spike_dt": 1,
+    "spike_dt": 0.3,
     "poisson_frequency": 0,
     "synaptic_activation_frequency": -0.5,
     "E_syn": 0.0,
