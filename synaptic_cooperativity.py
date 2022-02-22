@@ -18,6 +18,8 @@ from dlutils.cell import Cell, branch_order
 from dlutils.synapse import AMPANMDAExp2Synapse
 from dlutils.spine import Spine
 from dlutils.utils import extract_mechanisms
+from dlutils.morpho import Tree
+from dlutils.graphics import plot_tree
 
 
 prog_name = os.path.basename(sys.argv[0])
@@ -64,6 +66,8 @@ if __name__ == '__main__':
     if not os.path.isdir(optimization_folder):
         print(f'{prog_name}: {optimization_folder}: no such directory')
         sys.exit(2)
+    if optimization_folder[-1] != os.path.sep:
+        optimization_folder += os.path.sep
 
     log_fmt = logging.Formatter('%(asctime)s  |  %(message)s', '%Y-%m-%d  %H:%M:%S')
     logger = logging.getLogger()
@@ -86,10 +90,10 @@ if __name__ == '__main__':
     rs = RandomState(MT19937(SeedSequence(seed)))
     
     cell_type = config['cell_type']
-    prefix = cell_type[0].upper() + cell_type[1:]
-    base_folder = optimization_folder + prefix + '/' + config['cell_name'] + '/' + config['optimization_run'] + '/'
+    prefix = cell_type.capitalize()
+    base_folder = optimization_folder + prefix + os.path.sep + config['cell_name'] + os.path.sep + config['optimization_run'] + '/'
     swc_file = config['swc_file']
-    cell_name = config['cell_name'] + '_'
+    cell_name = config['cell_name']
     individual = config['individual']
 
     swc_file = base_folder + swc_file
@@ -97,10 +101,18 @@ if __name__ == '__main__':
     config_file = base_folder + 'parameters.json'
 
     parameters = json.load(open(params_file, 'r'))
-    mechanisms = extract_mechanisms(config_file, cell_name)
-    sim_pars = pickle.load(open(base_folder + 'simulation_parameters.pkl','rb'))
-    replace_axon = sim_pars['replace_axon']
-    add_axon_if_missing = not sim_pars['no_add_axon']
+    try:
+        mechanisms = extract_mechanisms(config_file, cell_name)
+    except:
+        # be a little flexible in the naming of the cells
+        cell_name += '_'
+        mechanisms = extract_mechanisms(config_file, cell_name)
+    try:
+        sim_pars = pickle.load(open(base_folder + 'simulation_parameters.pkl','rb'))
+        replace_axon = sim_pars['replace_axon']
+        add_axon_if_missing = not sim_pars['no_add_axon']
+    except:
+        replace_axon, add_axon_if_missing = True, True
 
 
     #############################
@@ -156,27 +168,31 @@ if __name__ == '__main__':
     logger.info(f'Spines axial resistivity: {Ra:.1f} Ohm cm')
     
     if args.plot_morpho:
-        # show where the spines are located on the dendritic tree
-        plt.figure(figsize=(6,6))
-        for sec in chain(cell.morpho.apic, cell.morpho.basal):
+        ### Show where the spine is located on the dendritic tree
+        tree = Tree(swc_file)
+        height = 4
+        width = height * tree.xy_ratio
+        fig,ax = plt.subplots(1, 1, figsize=(width, height))
+        plot_tree(tree, type_ids=(1,3,4), ax=ax, scalebar_length=100, bounds=[tree.bounds[0,:], tree.bounds[1,:]])
+        # label all the sections
+        for sec in chain(cell.morpho.apic, cell.morpho.dend):
             if sec in cell.morpho.apic:
-                color = 'k'
+                color = 'g'
             else:
-                color = 'b'
+                color = 'm'
             lbl = sec.name().split('.')[1].split('[')[1][:-1]
             n = sec.n3d()
             sec_coords = np.zeros((n,2))
             for i in range(n):
                 sec_coords[i,:] = np.array([sec.x3d(i), sec.y3d(i)])
             middle = int(n / 2)
-            plt.text(sec_coords[middle,0], sec_coords[middle,1], lbl, \
-                     fontsize=14, color='m')
-            plt.plot(sec_coords[:,0], sec_coords[:,1], color, lw=1)
-        for spine in spines:
-            plt.plot(spine._points[:,0], spine._points[:,1], 'r.')
+            plt.text(sec_coords[middle,0], sec_coords[middle,1], lbl, fontsize=3, color=color)
+        ax.plot(spine._points[:,0], spine._points[:,1], 'ro', markerfacecolor='r', markersize=2)
         plt.axis('equal')
-        plt.savefig(f'morpho_with_spines_{ts}.pdf')
-
+        plt.axis('off')
+        fig.tight_layout(pad=-0.1)
+        fig.savefig(f'morpho_with_spines_{ts}.pdf')
+        sys.exit(0)
 
     # check the location of the spines in terms of distinct segments
     segments = [section(spines[0]._sec_x)]
@@ -292,7 +308,8 @@ if __name__ == '__main__':
     else:
         F_burst *= -1
         T = 1 / F_burst * 1e3
-        presyn_spike_times = [np.sort(config['sim']['delay'] + (n_spines - 1) * T - np.arange(i) * T) for i in range(n_spines, 0, -1)]
+        presyn_spike_times = [np.sort(config['sim']['delay'] + (n_spines - 1) * T - np.arange(i) * T)
+                              for i in range(n_spines, 0, -1)]
         for i in range(n_spines):
             for j in range(len(presyn_spike_times[i])):
                 presyn_spike_times[i][j] += i * config['spike_dt']
@@ -314,7 +331,10 @@ if __name__ == '__main__':
     ### make the OU stimulus ###
     ############################
 
-    dt = config['sim']['dt']        # [ms]
+    try:
+        dt = config['sim']['dt']        # [ms]
+    except:
+        dt = 0.025 # Neuron default time step
     OU = {}
     OU['t'] = np.arange(0, tstop, dt)
     OU['x'] = np.zeros(OU['t'].size)

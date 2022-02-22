@@ -101,7 +101,8 @@ if __name__ == '__main__':
             print('Found pickle file with simulation parameters in {}.'.format(working_dir))
     except:
         sim_pars = None
-        print('No pickle file with simulation parameters in {}.'.format(working_dir))
+        if args.replace_axon is None and args.add_axon_if_missing is None:
+            print('No pickle file with simulation parameters in {}.'.format(working_dir))
 
     if args.replace_axon is None:
         if sim_pars is None:
@@ -175,7 +176,7 @@ if __name__ == '__main__':
     dlg.plot_means_with_errorbars(I*1e-3,no_spikes,mode='sem',ax=ax,color='r',label='All spikes')
     dlg.plot_means_with_errorbars(I*1e-3,f,mode='sem',ax=ax,color='k',label='With transient removed')
     dlg.plot_means_with_errorbars(I*1e-3,inverse_first_isi,mode='sem',ax=ax,color='b',label='Inverse first ISI')
-    dlg.plot_means_with_errorbars(I*1e-3,inverse_last_isi,mode='sem',ax=ax,color='m',label='Inverse last ISI')
+    #dlg.plot_means_with_errorbars(I*1e-3,inverse_last_isi,mode='sem',ax=ax,color='m',label='Inverse last ISI')
     plt.xlabel('Current (nA)')
     plt.ylabel(r'$f$ (spikes/s)')
     plt.legend(loc='best')

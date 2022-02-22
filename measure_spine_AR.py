@@ -21,6 +21,8 @@ from dlutils.cell import Cell, branch_order
 from dlutils.synapse import AMPAExp2Synapse, NMDAExp2Synapse
 from dlutils.spine import Spine
 from dlutils.numerics import double_exp
+from dlutils.morpho import Tree
+from dlutils.graphics import plot_tree
 
 
 progname = os.path.basename(sys.argv[0])
@@ -122,6 +124,7 @@ if __name__ == '__main__':
     parser.add_argument('--Ra', type=str, default='150', help='axial resistivity of the spine (default: 150 Ohm cm)')
     parser.add_argument('--target-dV', type=float, default=10, help='target deflection (default: 10 mV)')
     parser.add_argument('--max-iter', type=int, default=20, help='maximum number of iteration for optimize (default: 20)')
+    parser.add_argument('-X','--save-xls', action='store_true', help='save data in an Excel file')
     parser.add_argument('segment', type=str, default='apical[0](0.5)', nargs='?', action='store',
                         help='Segment where the spine will be placed (default: apical[0](0.5))')
     
@@ -336,24 +339,29 @@ if __name__ == '__main__':
         print('R_dend = {:.1f} MOhm.'.format(R_dend))
 
         ### Show where the spine is located on the dendritic tree
-        plt.figure(figsize=(2,2))
-        ax = plt.axes([0.15, 0.15, 0.8, 0.8])
+        tree = Tree(args.swc_file)
+        height = 4
+        width = height * tree.xy_ratio
+        fig,ax = plt.subplots(1, 1, figsize=(width, height))
+        plot_tree(tree, type_ids=(1,3,4), ax=ax, scalebar_length=100, bounds=[tree.bounds[0,:], tree.bounds[1,:]])
+        # label all the sections
         for sec in chain(cell.morpho.apic, cell.morpho.dend):
             if sec in cell.morpho.apic:
-                color = 'k'
+                color = 'g'
             else:
-                color = 'b'
+                color = 'm'
             lbl = sec.name().split('.')[1].split('[')[1][:-1]
             n = sec.n3d()
             sec_coords = np.zeros((n,2))
             for i in range(n):
                 sec_coords[i,:] = np.array([sec.x3d(i), sec.y3d(i)])
             middle = int(n / 2)
-            plt.text(sec_coords[middle,0], sec_coords[middle,1], lbl, fontsize=5, color='m')
-            plt.plot(sec_coords[:,0], sec_coords[:,1], color, lw=1)
-        plt.plot(spine._points[:,0], spine._points[:,1], 'ro', markerfacecolor='r', markersize=2)
+            plt.text(sec_coords[middle,0], sec_coords[middle,1], lbl, fontsize=3, color=color)
+        ax.plot(spine._points[:,0], spine._points[:,1], 'ro', markerfacecolor='r', markersize=2)
         plt.axis('equal')
-        plt.savefig(output_folder + '/spine_' + suffix + '.pdf')
+        plt.axis('off')
+        fig.tight_layout(pad=-0.1)
+        fig.savefig(output_folder + '/spine_' + suffix + '.pdf')
         if not args.quiet:
             plt.show()
 
@@ -419,16 +427,13 @@ if __name__ == '__main__':
 
         locations.append('soma')
 
-        #neuron.h('forall delete_section()')
-
         col = {'spine': 'g', 'dend': 'm', 'soma': 'k'}
-        plt.figure(figsize=(3,2))
-        ax = plt.axes([0.175, 0.2, 0.775, 0.775])
+        fig,ax = plt.subplots(1, 1, figsize=(3,2))
         for k in locations:
             ax.plot(rec['t'], rec[k], col[k], label=k, linewidth=1)
         ax.legend(loc='best')
         ax.set_xlabel('Time (ms)')
-        ax.set_ylabel('Vm (mV)')
+        ax.set_ylabel(r'$V_m$ (mV)')
         ax.set_xlim([t0 - 10, t_end])
         v = np.array([np.array(rec[loc]) for loc in ('spine', 'dend', 'soma')])
         v_min = v[:,-1].min()
@@ -440,7 +445,11 @@ if __name__ == '__main__':
         v_min = np.ceil(v_min / 5) * 5
         v_max = np.floor(v_max / 5) * 5
         ax.set_yticks(np.r_[v_min : v_max + 1 : 5])
-        plt.savefig(output_folder + '/EPSPs_' + suffix + '.pdf')
+        for side in 'right','top':
+            ax.spines[side].set_visible(False)
+        ax.grid(which='major', axis='y', ls=':', lw=0.5, color=[.6,.6,.6])
+        fig.tight_layout()
+        fig.savefig(output_folder + '/EPSPs_' + suffix + '.pdf')
         if not args.quiet:
             plt.show()
 
@@ -498,16 +507,17 @@ if __name__ == '__main__':
 
         pickle.dump(data, open(output_file, 'wb'))
 
-        df1 = pd.DataFrame({'x': segment_center[0], 'y': segment_center[1], 'z': segment_center[2],
-                            'dendrite_impedance': R_dend, 'neck_impedance': R_neck, 'amplitude_ratio': AR}, index=[0])
-        tmp = {'time': data['time']}
-        for loc in locations:
-            tmp['V' + loc] = data['V' + loc]
-        df2 = pd.DataFrame(tmp)
-        df = pd.concat([df1, df2], axis=1, ignore_index=True)
-        df.columns = 'x', 'y', 'z', 'dendrite_impedance', 'neck_impedance', 'amplitude_ratio', \
-                     'Time', 'V' + locations[0], 'V' + locations[1], 'V' + locations[2]
-        xls_file = os.path.splitext(output_file)[0] + '.xlsx'
-        with pd.ExcelWriter(xls_file) as writer:
-            df.to_excel(writer)
+        if args.save_xls:
+            df1 = pd.DataFrame({'x': segment_center[0], 'y': segment_center[1], 'z': segment_center[2],
+                                'dendrite_impedance': R_dend, 'neck_impedance': R_neck, 'amplitude_ratio': AR}, index=[0])
+            tmp = {'time': data['time']}
+            for loc in locations:
+                tmp['V' + loc] = data['V' + loc]
+            df2 = pd.DataFrame(tmp)
+            df = pd.concat([df1, df2], axis=1, ignore_index=True)
+            df.columns = 'x', 'y', 'z', 'dendrite_impedance', 'neck_impedance', 'amplitude_ratio', \
+                         'Time', 'V' + locations[0], 'V' + locations[1], 'V' + locations[2]
+            xls_file = os.path.splitext(output_file)[0] + '.xlsx'
+            with pd.ExcelWriter(xls_file) as writer:
+                df.to_excel(writer)
 

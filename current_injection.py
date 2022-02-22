@@ -260,7 +260,7 @@ def inject_current_step(I, delay, dur, swc_file, inj_loc, inj_dist, parameters, 
             pass
 
     t_end = dur + (N-1) / freq * 1000 + delay + after
-    run_simulation(t_end, h, cell_name, verbose)
+    run_simulation(t_end, h, cell.cell_name, verbose)
 
     if do_plot:
         plot_results(recorders, gbars, apical_dst, basal_dst, x_lim=[delay-50, t_end])
@@ -381,7 +381,7 @@ def main():
         basal_dst = {'basal{}'.format(i+1): float(dst) for i,dst in enumerate(args.basal_recordings.split(','))}
 
     rec = inject_current_step(args.I, args.delay, args.dur, args.swc_file, args.injection_site, \
-                              args.injection_site_distance, parameters, mechanisms, \
+                              args.injection_site_distance, parameters, mechanisms, args.delay, \
                               args.nsteps, args.frequency, apical_dst, basal_dst, \
                               args.current_recordings.upper(), replace_axon, add_axon_if_missing, \
                               do_plot=args.plot, verbose=args.verbose)
