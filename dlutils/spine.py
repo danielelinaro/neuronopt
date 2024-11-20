@@ -62,6 +62,7 @@ class Spine (object):
             neck_diam = diams[idx]
         self._diams = np.array([neck_diam, neck_diam, head_diam, head_diam])
         self._sec = sec
+        self._seg = sec(x)
         self._sec_x = norm_arclength[idx]
 
         if Ra is not None:
@@ -69,14 +70,17 @@ class Spine (object):
         else:
             self._Ra = self._sec.Ra
 
+        self._id = spine_id
         if spine_id is not None:
-            self._id = '-{}'.format(spine_id)
+            self._id = spine_id
         else:
             self._id = ''
 
+        self._synapses = []
+
     def instantiate(self):
-        self.neck = h.Section(name = 'neck' + self._id)
-        self.head = h.Section(name = 'head' + self._id)
+        self.neck = h.Section(name='neck-'+self.ID if self.ID is not None else 'neck')
+        self.head = h.Section(name='head-'+self.ID if self.ID is not None else 'head')
         self.neck.nseg = 1
         self.head.nseg = 1
         self.geometry()
@@ -108,3 +112,14 @@ class Spine (object):
             sec.insert('pas')
             sec.g_pas = self._sec(self._sec_x).g_pas
             sec.e_pas = self._sec(self._sec_x).e_pas
+
+    def add_synapse(self, syn):
+        self._synapses.append(syn)
+
+    @property
+    def synapses(self):
+        return self._synapses
+
+    @property
+    def ID(self):
+        return self._id

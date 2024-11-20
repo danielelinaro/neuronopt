@@ -8,7 +8,10 @@ __all__ = ['find_node_in_tree', 'compute_branch_id', 'find_terminal_branches',
            'Node', 'Tree']
 
 
-SWC_types = {'soma': 1, 'axon': 2, 'basal': 3, 'apical': 4, 'soma_contour': 16}
+SWC_types = {'soma': 1, 'axon': 2, 'basal': 3, 'apical': 4, # classical types
+             'AIS': 6, 'AIS_K': 7, 'axonmyelin': 8, 'axonnodes': 9,
+             'basal_dend': 10, 'pf_targets': 11, 'aa_targets': 12, 'sodium_dend': 13,
+             'soma_contour': 16}
 
 
 def find_node_in_tree(ID, tree):
@@ -191,15 +194,28 @@ class Node (object):
 
 
 class Tree (object):
-    def __init__(self, swc_file):
+    def __init__(self, swc_file, swc_types='all'):
         from collections import OrderedDict
         data = np.loadtxt(swc_file)
-        idx = (data[:,1] == 2) | (data[:,1] == 3) | (data[:,1] == 4)
-        x = data[idx, 2]
-        y = data[idx, 3]
-        z = data[idx, 4]
-        self.xy_ratio = (x.max() - x.min()) / (y.max() - y.min())
-        self.bounds = np.array([[x.min(), x.max()], [y.min(), y.max()], [z.min(), z.max()]])
+        jdx = np.array([2,3,4])
+        if swc_types != 'all'  and isinstance(swc_types, (list,set)):
+            idx = np.sum([X==y for y in Y], axis=0).astype(bool)
+        else:
+            idx = np.arange(data.shape[0])
+        IDX,JDX = np.meshgrid(idx,jdx)
+        x,y,z = data[IDX,JDX]
+        x_max,x_min = x.max(),x.min()
+        y_max,y_min = y.max(),y.min()
+        z_max,z_min = z.max(),z.min()
+        self.ratio = {
+            'xy': (x_max - x_min) / (y_max - y_min),
+            'xz': (x_max - x_min) / (z_max - z_min),
+            'yz': (y_max - y_min) / (z_max - z_min)
+        }
+        self.xy_ratio = self.ratio['xy']
+        self.xz_ratio = self.ratio['xz']
+        self.yz_ratio = self.ratio['yz']
+        self.bounds = np.array([[x_min, x_max], [y_min, y_max], [z_min, z_max]])
         nodes = OrderedDict()
         for row in data:
             node_id   = int(row[0])
