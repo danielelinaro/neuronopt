@@ -86,13 +86,16 @@ def plot_means_with_errorbars(x, y, mode='sem', ax=None, **kwargs):
         ax.plot(x, Ym, 'o-', **kwargs)
 
 
-def _plot_tree_fast(tree, coords='xy', swc_types='all', scalebar_length=None, cmap=None,
-                    points=None, values=None, cbar_levels=None, cbar_ticks=10,
+def _plot_tree_fast(tree, coords='xy', swc_types='all', scalebar_length=None,
+                    cmap=None, norm=None, points=None, values=None,
+                    show_cbar=False, cbar_ticks=10,
                     cbar_orientation='vertical', cbar_label='', ax=None,
-                    bounds=None, diam_coeff=1, cbar_ticks_fun=lambda x: x):
+                    bounds=None, diam_coeff=1):
     
     if ax is None:
         ax = plt.gca()
+
+    coords_jdx = [i for i,c in enumerate('xyz') if c in coords]
 
     if points is None or values is None:
         uniform_color_branches = True
@@ -114,12 +117,12 @@ def _plot_tree_fast(tree, coords='xy', swc_types='all', scalebar_length=None, cm
             color_fun = cmap
     else:
         uniform_color_branches = False
-        interp = NearestNDInterpolator(points, values)
+        interp = NearestNDInterpolator(points[:,coords_jdx], values)
+        if norm is None:
+            norm = colors.CenteredNorm()
         #norm = colors.Normalize(vmin=values.min(), vmax=values.max())
-        norm = colors.CenteredNorm()
         #norm = colors.TwoSlopeNorm(vmin=values.min(), vcenter=0, vmax=values.max())
 
-    coords_jdx = [i for i,c in enumerate('xyz') if c in coords]
     for branch in tree.branches:
         if swc_types != 'all' and branch[0].type not in swc_types:
             continue
@@ -139,15 +142,15 @@ def _plot_tree_fast(tree, coords='xy', swc_types='all', scalebar_length=None, cm
             lc = LineCollection(segments, linewidths=xyzd[:,-1]/2, colors=color_fun(branch[0].type))
         else:
             lc = LineCollection(segments, linewidths=xyzd[:,-1]/2, cmap=cmap, norm=norm)
-            lc.set_array(interp(xyzd[:,:3]))
+            lc.set_array(interp(xyzd[:,coords_jdx]))
         line = ax.add_collection(lc)
 
     if bounds is not None:
-        ax.set_xlim(bounds[0])
-        ax.set_ylim(bounds[1])
+        ax.set_xlim(bounds[coord_jdx[0]])
+        ax.set_ylim(bounds[coords_jdx[1]])
     else:
-        ax.set_xlim(tree.bounds[0])
-        ax.set_ylim(tree.bounds[1])
+        ax.set_xlim(tree.bounds[coords_jdx[0]])
+        ax.set_ylim(tree.bounds[coords_jdx[1]])
         ax.axis('equal')
 
     if scalebar_length is not None:
@@ -159,13 +162,12 @@ def _plot_tree_fast(tree, coords='xy', swc_types='all', scalebar_length=None, cm
         ax.text(x - np.diff(xlim)/40, y + scalebar_length/2, r'{} $\mu$m'.format(scalebar_length), fontsize=12, \
                 horizontalalignment='center', verticalalignment='center', rotation=90)
 
-    if not uniform_color_branches and cbar_levels is not None:
+    if not uniform_color_branches and show_cbar:
         if np.isscalar(cbar_ticks):
             ticks = np.linspace(values.min(), values.max(), cbar_ticks)
         else:
             ticks = cbar_ticks
         cbar = plt.colorbar(line, ax=ax, fraction=0.1, shrink=0.5, aspect=30, ticks=ticks, orientation=cbar_orientation)
-        #cbar.ax.set_yticklabels(cbar_ticks_fun(ticks))
         if cbar_orientation == 'vertical':
             cbar.ax.set_ylabel(cbar_label)
         else:
@@ -205,13 +207,15 @@ def _plot_tree_btmorph(tree, swc_types='all', ax=None):
 
 
 
-def plot_tree(tree, coords='xy', swc_types='all', scalebar_length=None, cmap=None, points=None,
-              values=None, cbar_levels=None, cbar_ticks=10, cbar_orientation='vertical',
-              cbar_label='', ax=None, bounds=None, diam_coeff=1, cbar_ticks_fun=lambda x: x):
+def plot_tree(tree, coords='xy', swc_types='all', scalebar_length=None,
+              cmap=None, norm=None, points=None, values=None,
+              show_cbar=False, cbar_ticks=10, cbar_orientation='vertical',
+              cbar_label='', ax=None, bounds=None, diam_coeff=1):
     if isinstance(tree, Tree):
-        _plot_tree_fast(tree, coords, swc_types, scalebar_length, cmap, points, values,
-                        cbar_levels, cbar_ticks, cbar_orientation, cbar_label,
-                        ax, bounds, diam_coeff, cbar_ticks_fun)
+        _plot_tree_fast(tree, coords, swc_types, scalebar_length,
+                        cmap, norm, points, values,
+                        show_cbar, cbar_ticks, cbar_orientation, cbar_label,
+                        ax, bounds, diam_coeff)
     else:
         _plot_tree_btmorph(tree, swc_types, ax)
 
